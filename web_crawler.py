@@ -13,6 +13,28 @@ import re
 from datetime import datetime
 from typing import List, Dict, Optional
 import json
+from requests.exceptions import RequestException, Timeout, HTTPError, ConnectionError
+
+
+class Config:
+    """설정 상수"""
+    # 요청 관련
+    REQUEST_TIMEOUT: int = 10
+    REQUEST_DELAY: float = 2.0
+
+    # 결과 제한
+    DEFAULT_MAX_RESULTS: int = 20
+    DEFAULT_MAX_RESULTS_MULTIPLE: int = 10
+
+    # 텍스트 처리 관련
+    MIN_LINE_LENGTH: int = 50
+    MAX_DESCRIPTION_LENGTH: int = 200
+    MAX_CONTENT_PREVIEW_LENGTH: int = 500
+    MAX_COLUMN_WIDTH: int = 50
+    COLUMN_WIDTH_PADDING: int = 2
+
+    # UI 관련
+    MAX_TITLE_DISPLAY_LENGTH: int = 50
 
 
 class WebCrawler:
@@ -24,9 +46,9 @@ class WebCrawler:
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
-        self.crawled_data = []
+        self.crawled_data: List[Dict[str, str]] = []
 
-    def search_google_news(self, keyword: str, max_results: int = 20) -> List[Dict]:
+    def search_google_news(self, keyword: str, max_results: int = Config.DEFAULT_MAX_RESULTS) -> List[Dict[str, str]]:
         """
         Google News에서 키워드 검색 결과 크롤링
 
@@ -40,12 +62,12 @@ class WebCrawler:
         search_url = f"{self.base_url}/search?q={keyword}&hl=ko&gl=KR&ceid=KR:ko"
 
         try:
-            response = self.session.get(search_url, timeout=10)
+            response = self.session.get(search_url, timeout=Config.REQUEST_TIMEOUT)
             response.raise_for_status()
 
             soup = BeautifulSoup(response.content, 'html.parser')
 
-            articles = []
+            articles: List[Dict[str, str]] = []
             article_count = 0
 
             # 뉴스 아티클 요소 찾기
@@ -75,7 +97,7 @@ class WebCrawler:
                     source_elem = article.find('div', class_='CEljJd')
                     source_date = source_elem.get_text(strip=True) if source_elem else ""
 
-                    article_data = {
+                    article_data: Dict[str, str] = {
                         '키워드': keyword,
                         '제목': title,
                         '요약': summary,
@@ -87,20 +109,29 @@ class WebCrawler:
                     articles.append(article_data)
                     article_count += 1
 
-                    print(f"✓ {article_count}. {title[:50]}...")
+                    print(f"✓ {article_count}. {title[:Config.MAX_TITLE_DISPLAY_LENGTH]}...")
 
-                except Exception as e:
+                except (AttributeError, KeyError, IndexError) as e:
                     print(f"⚠ 아티클 파싱 오류: {e}")
                     continue
 
             self.crawled_data.extend(articles)
             return articles
 
-        except Exception as e:
-            print(f"❌ 검색 오류: {e}")
+        except Timeout:
+            print(f"❌ 요청 시간 초과: {search_url}")
+            return []
+        except HTTPError as e:
+            print(f"❌ HTTP 오류: {e.response.status_code}")
+            return []
+        except ConnectionError:
+            print(f"❌ 연결 오류: 인터넷 연결을 확인하세요")
+            return []
+        except RequestException as e:
+            print(f"❌ 요청 오류: {e}")
             return []
 
-    def search_naver_blog(self, keyword: str, max_results: int = 20) -> List[Dict]:
+    def search_naver_blog(self, keyword: str, max_results: int = Config.DEFAULT_MAX_RESULTS) -> List[Dict[str, str]]:
         """
         네이버 블로그 검색 결과 크롤링
 
@@ -112,19 +143,19 @@ class WebCrawler:
             크롤링된 데이터 리스트
         """
         search_url = "https://search.naver.com/search.naver"
-        params = {
+        params: Dict[str, str] = {
             'where': 'view',
             'sm': 'tab_jum',
             'query': keyword
         }
 
         try:
-            response = self.session.get(search_url, params=params, timeout=10)
+            response = self.session.get(search_url, params=params, timeout=Config.REQUEST_TIMEOUT)
             response.raise_for_status()
 
             soup = BeautifulSoup(response.content, 'html.parser')
 
-            articles = []
+            articles: List[Dict[str, str]] = []
 
             # 블로그 포스트 요소 찾기
             for post in soup.select('.view_wrap'):
@@ -146,7 +177,7 @@ class WebCrawler:
                     date_elem = post.select_one('.sub_time')
                     date_str = date_elem.get_text(strip=True) if date_elem else ""
 
-                    article_data = {
+                    article_data: Dict[str, str] = {
                         '키워드': keyword,
                         '제목': title,
                         '요약': summary,
@@ -158,18 +189,27 @@ class WebCrawler:
 
                     articles.append(article_data)
 
-                except Exception as e:
+                except (AttributeError, KeyError, IndexError) as e:
                     print(f"⚠ 포스트 파싱 오류: {e}")
                     continue
 
             self.crawled_data.extend(articles)
             return articles
 
-        except Exception as e:
-            print(f"❌ 네이버 검색 오류: {e}")
+        except Timeout:
+            print(f"❌ 요청 시간 초과: {search_url}")
+            return []
+        except HTTPError as e:
+            print(f"❌ HTTP 오류: {e.response.status_code}")
+            return []
+        except ConnectionError:
+            print(f"❌ 연결 오류: 인터넷 연결을 확인하세요")
+            return []
+        except RequestException as e:
+            print(f"❌ 요청 오류: {e}")
             return []
 
-    def crawl_custom_url(self, url: str, selector: str = None) -> List[Dict]:
+    def crawl_custom_url(self, url: str, selector: Optional[str] = None) -> List[Dict[str, str]]:
         """
         사용자 정의 URL 크롤링
 
@@ -181,14 +221,14 @@ class WebCrawler:
             크롤링된 데이터 리스트
         """
         try:
-            response = self.session.get(url, timeout=10)
+            response = self.session.get(url, timeout=Config.REQUEST_TIMEOUT)
             response.raise_for_status()
 
             soup = BeautifulSoup(response.content, 'html.parser')
 
             # 페이지 제목
-            page_title = soup.find('title')
-            page_title = page_title.get_text(strip=True) if page_title else url
+            page_title_elem = soup.find('title')
+            page_title = page_title_elem.get_text(strip=True) if page_title_elem else url
 
             # 메타 데이터
             meta_desc = soup.find('meta', attrs={'name': 'description'})
@@ -204,21 +244,30 @@ class WebCrawler:
                     for elem in soup.find_all(tag):
                         elem.decompose()
                 content = soup.get_text(separator='\n', strip=True)
-                content = '\n'.join(line for line in content.split('\n') if len(line) > 50)
+                content = '\n'.join(line for line in content.split('\n') if len(line) > Config.MIN_LINE_LENGTH)
 
-            article_data = {
+            article_data: Dict[str, str] = {
                 'URL': url,
                 '페이지 제목': page_title,
-                '설명': description[:200] if description else "",
-                '본문 미리보기': content[:500] + '...' if len(content) > 500 else content,
+                '설명': description[:Config.MAX_DESCRIPTION_LENGTH] if description else "",
+                '본문 미리보기': content[:Config.MAX_CONTENT_PREVIEW_LENGTH] + '...' if len(content) > Config.MAX_CONTENT_PREVIEW_LENGTH else content,
                 '수집일시': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
 
             self.crawled_data.append(article_data)
             return [article_data]
 
-        except Exception as e:
-            print(f"❌ URL 크롤링 오류: {e}")
+        except Timeout:
+            print(f"❌ 요청 시간 초과: {url}")
+            return []
+        except HTTPError as e:
+            print(f"❌ HTTP 오류: {e.response.status_code}")
+            return []
+        except ConnectionError:
+            print(f"❌ 연결 오류: 인터넷 연결을 확인하세요")
+            return []
+        except RequestException as e:
+            print(f"❌ 요청 오류: {e}")
             return []
 
 
@@ -226,7 +275,27 @@ class ExcelExporter:
     """Excel 저장 클래스"""
 
     @staticmethod
-    def save_to_excel(data: List[Dict], filename: str = None, sheet_name: str = "크롤링_결과") -> str:
+    def _adjust_column_width(worksheet) -> None:
+        """
+        Excel 워크시트의 열 너비를 자동 조정
+
+        Args:
+            worksheet: openpyxl 워크시트 객체
+        """
+        for column in worksheet.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except (AttributeError, TypeError):
+                    pass
+            adjusted_width = min(max_length + Config.COLUMN_WIDTH_PADDING, Config.MAX_COLUMN_WIDTH)
+            worksheet.column_dimensions[column_letter].width = adjusted_width
+
+    @staticmethod
+    def save_to_excel(data: List[Dict[str, str]], filename: Optional[str] = None, sheet_name: str = "크롤링_결과") -> str:
         """
         크롤링 데이터를 Excel 파일로 저장
 
@@ -258,17 +327,7 @@ class ExcelExporter:
 
                 # 워크시트 및 열 너비 자동 조정
                 worksheet = writer.sheets[sheet_name]
-                for column in worksheet.columns:
-                    max_length = 0
-                    column_letter = column[0].column_letter
-                    for cell in column:
-                        try:
-                            if len(str(cell.value)) > max_length:
-                                max_length = len(str(cell.value))
-                        except:
-                            pass
-                    adjusted_width = min(max_length + 2, 50)
-                    worksheet.column_dimensions[column_letter].width = adjusted_width
+                ExcelExporter._adjust_column_width(worksheet)
 
             print(f"\n✅ Excel 파일 저장 완료: {filename}")
             print(f"   - 총 {len(data)}개 항목 저장됨")
@@ -276,12 +335,15 @@ class ExcelExporter:
 
             return filename
 
+        except (IOError, OSError) as e:
+            print(f"❌ 파일 저장 오류: {e}")
+            return ""
         except Exception as e:
             print(f"❌ Excel 저장 오류: {e}")
             return ""
 
     @staticmethod
-    def save_multiple_sheets(data_dict: Dict[str, List[Dict]], filename: str = None) -> str:
+    def save_multiple_sheets(data_dict: Dict[str, List[Dict[str, str]]], filename: Optional[str] = None) -> str:
         """
         여러 시트에 데이터 저장
 
@@ -308,17 +370,7 @@ class ExcelExporter:
 
                         # 열 너비 자동 조정
                         worksheet = writer.sheets[sheet_name]
-                        for column in worksheet.columns:
-                            max_length = 0
-                            column_letter = column[0].column_letter
-                            for cell in column:
-                                try:
-                                    if len(str(cell.value)) > max_length:
-                                        max_length = len(str(cell.value))
-                                except:
-                                    pass
-                            adjusted_width = min(max_length + 2, 50)
-                            worksheet.column_dimensions[column_letter].width = adjusted_width
+                        ExcelExporter._adjust_column_width(worksheet)
 
             total_items = sum(len(data) for data in data_dict.values())
             print(f"\n✅ Excel 파일 저장 완료: {filename}")
@@ -326,12 +378,15 @@ class ExcelExporter:
 
             return filename
 
+        except (IOError, OSError) as e:
+            print(f"❌ 파일 저장 오류: {e}")
+            return ""
         except Exception as e:
             print(f"❌ Excel 저장 오류: {e}")
             return ""
 
 
-def main():
+def main() -> None:
     """메인 함수 - 대화형 프로그램"""
 
     print("=" * 60)
@@ -350,13 +405,13 @@ def main():
 
     mode = input("\n모드를 선택하세요 (1-4): ").strip()
 
-    all_data = {}
+    all_data: Dict[str, List[Dict[str, str]]] = {}
 
     if mode == "1":
         # Google News 검색
         keyword = input("검색 키워드: ").strip()
-        max_results = input("최대 결과 수 (기본값: 20): ").strip()
-        max_results = int(max_results) if max_results.isdigit() else 20
+        max_results_input = input(f"최대 결과 수 (기본값: {Config.DEFAULT_MAX_RESULTS}): ").strip()
+        max_results = int(max_results_input) if max_results_input.isdigit() else Config.DEFAULT_MAX_RESULTS
 
         print(f"\n🔍 '{keyword}' 검색 중...")
         data = crawler.search_google_news(keyword, max_results)
@@ -377,7 +432,8 @@ def main():
     elif mode == "3":
         # 사용자 정의 URL
         url = input("크롤링할 URL: ").strip()
-        selector = input("CSS 선택자 (선택사항, 엔터로 건너뜀): ").strip() or None
+        selector_input = input("CSS 선택자 (선택사항, 엔터로 건너뜀): ").strip()
+        selector = selector_input if selector_input else None
 
         print(f"\n🔍 URL 크롤링 중...")
         data = crawler.crawl_custom_url(url, selector)
@@ -390,8 +446,8 @@ def main():
         keywords_input = input("검색할 키워드들 (쉼표로 구분): ").strip()
         keywords = [k.strip() for k in keywords_input.split(',')]
 
-        max_results = input("각 키워드당 최대 결과 수 (기본값: 10): ").strip()
-        max_results = int(max_results) if max_results.isdigit() else 10
+        max_results_input = input(f"각 키워드당 최대 결과 수 (기본값: {Config.DEFAULT_MAX_RESULTS_MULTIPLE}): ").strip()
+        max_results = int(max_results_input) if max_results_input.isdigit() else Config.DEFAULT_MAX_RESULTS_MULTIPLE
 
         for keyword in keywords:
             print(f"\n🔍 '{keyword}' 검색 중...")
@@ -400,7 +456,7 @@ def main():
             if data:
                 all_data[f"News_{keyword}"] = data
 
-            time.sleep(2)  # 요청 간격
+            time.sleep(Config.REQUEST_DELAY)  # 요청 간격
 
     else:
         print("❌ 잘못된 선택입니다.")
@@ -414,11 +470,13 @@ def main():
             # 단일 시트
             sheet_name, data = list(all_data.items())[0]
             filename_input = input("\n저장할 파일명 (엔터 시 자동 생성): ").strip()
-            exporter.save_to_excel(data, filename_input if filename_input else None, sheet_name)
+            filename = filename_input if filename_input else None
+            exporter.save_to_excel(data, filename, sheet_name)
         else:
             # 다중 시트
             filename_input = input("\n저장할 파일명 (엔터 시 자동 생성): ").strip()
-            exporter.save_multiple_sheets(all_data, filename_input if filename_input else None)
+            filename = filename_input if filename_input else None
+            exporter.save_multiple_sheets(all_data, filename)
 
         print("\n✨ 프로그램 완료!")
     else:
