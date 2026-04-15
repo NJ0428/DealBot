@@ -1,0 +1,6 @@
+2026-04-13 23:23:05,358 - WebCrawler - INFO - 프록시 매니저 초기화: 0개 프록시 로드됨
+2026-04-13 23:23:05,386 - WebCrawler - INFO - 캐시 시스템 초기화: .cache
+2026-04-13 23:23:05,394 - WebCrawler - INFO - 캐시 시스템 초기화: .cache
+2026-04-13 23:23:05,394 - WebCrawler - INFO - 웹 크롤러 초기화 (캐시: True, 프록시: False)
+2026-04-13 23:23:05,394 - WebCrawler - INFO - Test log message
+2026-04-13 23:23:05,394 - WebCrawler - INFO - 크롤러 리소스 정리 완료
