@@ -1,0 +1,10 @@
+# 프록시 리스트 파일
+# 형식: http://user:pass@host:port 또는 http://host:port
+# 예시:
+# http://proxy1.example.com:8080
+# http://user:password@proxy2.example.com:3128
+# socks5://proxy3.example.com:1080
+
+# 무료 프록시 서비스 예시 (테스트용)
+# 주의: 무료 프록시는 안정성이 낮을 수 있습니다
+# 실제 사용 시 유료 프록시 서비스를 권장합니다

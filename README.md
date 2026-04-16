@@ -1,181 +1,398 @@
 # 🕷️ 웹 주제 크롤러 및 Excel 저장 프로그램
 
-특정 주제/키워드로 웹에서 정보를 수집하고 Excel 파일로 자동 저장하는 파이썬 프로그램입니다.
+특정 주제/키워드로 웹에서 정보를 수집하고 Excel 파일로 저장하는 파이썬 프로그램입니다.
 
 ## ✨ 주요 기능
 
-### 1. Google News 검색
-- 특정 키워드로 Google News 뉴스 기사 크롤링
-- 제목, 요약, 출처, 링크, 날짜 수집
-- 한국어 뉴스 검색 지원
+### 기본 기능
 
-### 2. 네이버 블로그 검색
-- 네이버 블로그 포스트 검색 및 수집
-- 블로그명, 포스트 제목, 요약, 날짜, 링크 수집
+- 🔍 **Google News 검색**: 키워드로 뉴스 검색 및 크롤링
+- 📝 **네이버 블로그 검색**: 블로그 포스트 검색 및 수집
+- 🌐 **사용자 정의 URL 크롤링**: 특정 URL에서 데이터 추출
+- 📊 **Excel 자동 저장**: 자동 열 너비 조정 및 다중 시트 지원
 
-### 3. 사용자 정의 URL 크롤링
-- 원하는 URL의 콘텐츠 크롤링
-- CSS 선택자를 활용한 정밀 추출
-- 페이지 제목, 설명, 본문 수집
+### ⚡ 업그레이드 기능
 
-### 4. 다중 키워드 검색
-- 여러 키워드를 한 번에 검색
-- 각 키워드별로 별도 시트에 자동 정리
+#### 1. 📦 결과 캐싱
 
-## 📦 설치 방법
+- 동일 키워드 검색 시 캐시 활용으로 속도 개선
+- 디스크 기반 캐시 (지속성 보장)
+- 자동 만료 관리 (기본 24시간)
 
-### 1. 패키지 설치
+```python
+crawler = WebCrawler(use_cache=True)
+data = crawler.search_google_news("인공지능")  # 첫 검색은 크롤링
+data = crawler.search_google_news("인공지능")  # 두 번째는 캐시 사용
+```
+
+#### 2. 📊 진행률 표시
+
+- 크롤링 진행 상황을 프로그레스 바로 시각화
+- 실시간 진행률 및 처리 속도 표시
+- 멀티키워드 검색 시 총 진행률 표시
+
+```
+검색 중... ████████████████░░░░░░░░ 60% | 12/20 항목 | 2.3초/항목
+```
+
+#### 3. 🚀 비동기 요청
+
+- `aiohttp` 활용으로 병렬 크롤링 지원
+- 최대 5개의 동시 요청 처리
+- 멀티키워드 검색 시 속도 대폭 개선
+
+```python
+# 비동기 검색 활성화
+results = crawler.search_multiple_keywords(
+    ["AI", "블록체인", "메타버스"],
+    max_results=10,
+    use_async=True  # 병렬 처리
+)
+```
+
+#### 4. 🛡️ 프록시 지원
+
+- IP 차단 방지를 위한 프록시 로테이션
+- 라운드 로빈 방식으로 프록시 순환 사용
+- HTTP/HTTPS/SOCKS5 프록시 지원
+
+```python
+# 프록시 활성화
+crawler = WebCrawler(use_proxy=True)
+
+# 프록시 리스트: proxies.txt
+# http://proxy1.example.com:8080
+# http://user:pass@proxy2.example.com:3128
+```
+
+#### 5. 📋 로그 시스템
+
+- `logging` 모듈 도입으로 체계적인 로그 관리
+- 파일 및 콘솔 로그 동시 출력
+- 날짜별 로그 파일 자동 생성
+
+```
+logs/crawler_20260413.log
+```
+
+```python
+from web_crawler import logger
+
+logger.info("정보 메시지")
+logger.warning("경고 메시지")
+logger.error("오류 메시지")
+```
+
+#### 6. 🔍 결과 필터링
+
+- **날짜 범위**: 특정 기간 내 결과만 필터링
+- **출처 필터**: 특정 출처 포함/제외
+- **키워드 필터**: 제목/내용 키워드 기반 필터
+- **길이 필터**: 제목 길이 기반 필터
+
+```python
+from web_crawler import FilterCriteria
+from datetime import datetime, timedelta
+
+# 필터링 기준 설정
+criteria = FilterCriteria(
+    start_date=datetime.now() - timedelta(days=7),  # 최근 7일
+    allowed_sources={"연합뉴스", "Reuters"},          # 특정 출처만
+    keywords_in_title={"AI", "인공지능"},              # 제목 키워드
+    min_title_length=10                              # 최소 길이
+)
+
+# 필터 적용 검색
+data = crawler.search_google_news(
+    "인공지능",
+    filter_criteria=criteria
+)
+```
+
+## 📦 설치
+
+### 요구사항
+
+- Python 3.8+
+- pip
+
+### 패키지 설치
+
 ```bash
 pip install -r requirements.txt
 ```
 
-또는 개별 설치:
-```bash
-pip install requests beautifulsoup4 pandas openpyxl lxml
+### 의존성
+
+```
+requests>=2.31.0         # HTTP 요청
+beautifulsoup4>=4.12.0   # HTML 파싱
+pandas>=2.0.0            # 데이터 처리
+openpyxl>=3.1.0          # Excel 저장
+lxml>=4.9.0              # XML/HTML 파싱
+aiohttp>=3.9.0           # 비동기 HTTP 요청 (신규)
+tqdm>=4.66.0             # 진행률 표시 (신규)
+diskcache>=5.6.0         # 디스크 캐싱 (신규)
 ```
 
-### 2. 프로그램 실행
+## 🚀 사용법
+
+### 1. 기본 사용 (대화형 모드)
+
 ```bash
 python web_crawler.py
 ```
 
-## 🚀 사용 방법
+### 2. 코드로 사용
 
-### 실행 후 모드 선택
-```
-🕷️  웹 주제 크롤러 및 Excel 저장 프로그래
-============================================================
+#### 기본 검색
 
-[크롤링 모드 선택]
-1. Google News 검색
-2. 네이버 블로그 검색
-3. 사용자 정의 URL 크롤링
-4. 다중 키워드 검색 (Google News)
-
-모드를 선택하세요 (1-4):
-```
-
-### 모드별 사용 예시
-
-#### 1️⃣ Google News 검색
-```
-모드를 선택하세요 (1-4): 1
-검색 키워드: 인공지능
-최대 결과 수 (기본값: 20): 10
-
-🔍 '인공지능' 검색 중...
-✓ 1. OpenAI, 새로운 GPT 모델 발표...
-✓ 2. 구글, AI 검색 엔진 업그레이드...
-...
-
-============================================================
-
-저장할 파일명 (엔터 시 자동 생성):
-
-✅ Excel 파일 저장 완료: crawling_result_20240411_143022.xlsx
-   - 총 10개 항목 저장됨
-   - 시트명: News_인공지능
-
-✨ 프로그램 완료!
-```
-
-#### 2️⃣ 네이버 블로그 검색
-```
-모드를 선택하세요 (1-4): 2
-검색 키워드: 맛집 추천
-
-🔍 네이버 블로그 '맛집 추천' 검색 중...
-
-============================================================
-
-✅ Excel 파일 저장 완료: crawling_result_20240411_143500.xlsx
-```
-
-#### 3️⃣ 사용자 정의 URL
-```
-모드를 선택하세요 (1-4): 3
-크롤링할 URL: https://example.com/article/123
-CSS 선택자 (선택사항, 엔터로 건너뜀): .article-content
-
-🔍 URL 크롤링 중...
-```
-
-#### 4️⃣ 다중 키워드 검색
-```
-모드를 선택하세요 (1-4): 4
-검색할 키워드들 (쉼표로 구분): AI, 블록체인, 메타버스
-각 키워드당 최대 결과 수 (기본값: 10): 5
-
-🔍 'AI' 검색 중...
-🔍 '블록체인' 검색 중...
-🔍 '메타버스' 검색 중...
-
-✅ Excel 파일 저장 완료
-   - 총 3개 시트, 15개 항목
-```
-
-## 📊 출력 Excel 파일 구조
-
-### Google News 검색 결과
-| 키워드 | 제목 | 요약 | 출처/날짜 | 링크 | 수집일시 |
-|--------|------|------|-----------|------|----------|
-| 인공지능 | OpenAI... | GPT-4... | CNN • 2시간 전 | https://... | 2024-04-11 14:30:22 |
-
-### 네이버 블로그 검색 결과
-| 키워드 | 제목 | 요약 | 블로그 | 날짜 | 링크 | 수집일시 |
-|--------|------|------|--------|------|------|----------|
-| 맛집 | 강남역 맛집... | 이번에... | foodie | 2024.04.10 | https://... | 2024-04-11 14:30:22 |
-
-## 🛠️ 클래스 구조
-
-### WebCrawler
-- `search_google_news(keyword, max_results)` - Google News 검색
-- `search_naver_blog(keyword, max_results)` - 네이버 블로그 검색
-- `crawl_custom_url(url, selector)` - 사용자 정의 URL 크롤링
-
-### ExcelExporter
-- `save_to_excel(data, filename, sheet_name)` - 단일 시트 저장
-- `save_multiple_sheets(data_dict, filename)` - 다중 시트 저장
-
-## ⚙️ 주요 설정
-
-### 요청 간격
-- 자동으로 2초 간격으로 요청하여 서버 부하 방지
-- 필요시 코드에서 `time.sleep(2)` 값 조정
-
-### User-Agent
 ```python
-self.session.headers.update({
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-})
+from web_crawler import WebCrawler, ExcelExporter
+
+crawler = WebCrawler()
+exporter = ExcelExporter()
+
+# Google News 검색
+data = crawler.search_google_news("인공지능", max_results=10)
+
+# Excel 저장
+if data:
+    exporter.save_to_excel(data, "result.xlsx", "뉴스")
 ```
 
-### 최대 결과 수
-- 기본값: 20개 (Google News)
-- 조정: `max_results` 파라미터 값 변경
+#### 캐싱 활용
 
-## 🎯 사용 팁
+```python
+# 캐시 활성화
+crawler = WebCrawler(use_cache=True)
 
-1. **파일명 자동 생성**: 저장 시 엔터를 누르면 자동으로 `crawling_result_날짜시간.xlsx` 형식으로 생성
-2. **다중 시트**: 여러 키워드를 검색하면 각 키워드별로 별도 시트에 정리
-3. **열 너비 자동 조정**: Excel 파일의 열 너비를 내용에 맞게 자동 조정
-4. **CSS 선택자**: 고급 사용자를 위해 특정 요소만 선택 가능
+# 첫 번째 검색 (실제 크롤링)
+data1 = crawler.search_google_news("파이썬")
 
-## ⚠️ 주의사항
+# 두 번째 검색 (캐시 사용 - 매우 빠름)
+data2 = crawler.search_google_news("파이썬")
 
-- 웹사이트의 robots.txt를 준수하세요
-- 과도한 요청은 IP 차단의 원인이 될 수 있습니다
-- 상업적 용도 사용 시 저작권 법률을 확인하세요
-- 일부 웹사이트는 크롤링을 차단할 수 있습니다
+# 캐시 비우기
+crawler.clear_cache()
+crawler.close()
+```
 
-## 📝 라이선스
+#### 필터링 적용
 
-이 프로그램은 학습 및 개인적인 사용을 위해 제작되었습니다.
+```python
+from web_crawler import FilterCriteria
+from datetime import datetime, timedelta
 
-## 🤝 기여
+crawler = WebCrawler(use_cache=True)
 
-버그 리포트나 기능 요청은 이슈를 통해 제출해주세요.
+# 필터 설정
+criteria = FilterCriteria(
+    start_date=datetime.now() - timedelta(days=7),
+    keywords_in_title={"파이썬", "Python"},
+    min_title_length=15
+)
 
----
+# 필터 적용 검색
+data = crawler.search_google_news(
+    "파이썬",
+    max_results=20,
+    filter_criteria=criteria
+)
+```
 
-Made with ❤️ for web crawling automation
+#### 다중 키워드 검색
+
+```python
+keywords = ["AI", "블록체인", "메타버스"]
+
+# 동기 검색
+results = crawler.search_multiple_keywords(
+    keywords,
+    max_results=10,
+    use_async=False
+)
+
+# 비동기 검색 (병렬 처리)
+results = crawler.search_multiple_keywords(
+    keywords,
+    max_results=10,
+    use_async=True
+)
+
+# 결과 저장
+all_data = {f"News_{k}": v for k, v in results.items()}
+exporter.save_multiple_sheets(all_data, "tech_trends.xlsx")
+```
+
+#### 수동 필터링 체이닝
+
+```python
+from web_crawler import ResultFilter
+
+# 데이터 수집
+data = crawler.search_google_news("코딩", max_results=50)
+
+# 1단계: 날짜 필터링
+filtered = ResultFilter.filter_by_date(
+    data,
+    start_date=datetime.now() - timedelta(days=30)
+)
+
+# 2단계: 키워드 필터링
+filtered = ResultFilter.filter_by_keywords(
+    filtered,
+    keywords_in_title={"프로그래밍", "개발"}
+)
+
+# 3단계: 출처 필터링
+filtered = ResultFilter.filter_by_source(
+    filtered,
+    allowed_sources={"연합뉴스", "뉴시스"}
+)
+
+# 결과 저장
+exporter.save_to_excel(filtered, "filtered_result.xlsx")
+```
+
+### 3. 예시 실행
+
+```bash
+python example_usage.py
+```
+
+사용 가능한 예시:
+
+1. 기본 검색 (캐싱)
+2. 필터링 옵션
+3. 다중 키워드 비동기 검색
+4. 출처 기반 필터링
+5. 수동 필터링 체이닝
+6. 로그 시스템
+7. 캐시 관리
+8. 종합 검색
+9. 프록시 설정
+
+## 📁 프로젝트 구조
+
+```
+.
+├── web_crawler.py          # 메인 크롤러 모듈
+├── example_usage.py        # 사용 예시 스크립트
+├── requirements.txt        # 의존성 패키지
+├── README.md              # 이 파일
+├── .cache/                # 캐시 디렉토리 (자동 생성)
+├── logs/                  # 로그 디렉토리 (자동 생성)
+└── proxies.txt            # 프록시 리스트 (선택사항)
+```
+
+## ⚙️ 설정
+
+### 크롤러 설정
+
+```python
+from web_crawler import Config
+
+# 설정 값
+Config.REQUEST_TIMEOUT = 10           # 요청 타임아웃 (초)
+Config.REQUEST_DELAY = 2.0            # 요청 간격 (초)
+Config.DEFAULT_MAX_RESULTS = 20       # 기본 최대 결과 수
+Config.CACHE_EXPIRE_HOURS = 24        # 캐시 만료 시간
+Config.MAX_CONCURRENT_REQUESTS = 5    # 최대 동시 요청 수
+```
+
+### 프록시 설정
+
+`proxies.txt` 파일 생성:
+
+```
+# 프록시 리스트
+# 형식: protocol://user:pass@host:port
+
+http://proxy1.example.com:8080
+http://user:password@proxy2.example.com:3128
+socks5://proxy3.example.com:1080
+```
+
+## 📊 Excel 출력 예시
+
+| 키워드   | 제목                        | 요약                   | 출처/날짜             | 링크        | 수집일시            |
+| -------- | --------------------------- | ---------------------- | --------------------- | ----------- | ------------------- |
+| 인공지능 | OpenAI, 새로운 모델 발표... | AI 기술 혁신 가속화... | 테크미디어 · 2시간 전 | https://... | 2026-04-13 14:30:00 |
+
+## 🔧 고급 기능
+
+### 필터링 기준 상세
+
+```python
+from web_crawler import FilterCriteria
+from datetime import datetime
+
+criteria = FilterCriteria(
+    # 날짜 필터
+    start_date=datetime(2026, 4, 1),
+    end_date=datetime(2026, 4, 30),
+
+    # 출처 필터
+    allowed_sources={"연합뉴스", "Reuters"},
+    blocked_sources={"광고"},
+
+    # 키워드 필터
+    keywords_in_title={"AI", "인공지능"},
+    keywords_in_content={"딥러닝", "신경망"},
+
+    # 길이 필터
+    min_title_length=10,
+    max_title_length=100
+)
+```
+
+### 로그 확인
+
+```python
+from web_crawler import logger
+
+logger.info("정보 로그")
+logger.warning("경고 로그")
+logger.error("에러 로그")
+
+# 로그 파일: logs/crawler_YYYYMMDD.log
+```
+
+### 캐시 관리
+
+```python
+crawler = WebCrawler(use_cache=True)
+
+# 캐시 자동 사용
+data = crawler.search_google_news("키워드")
+
+# 캐시 수동 비우기
+crawler.clear_cache()
+
+# 리소스 정리
+crawler.close()
+```
+
+## 🐛 문제 해결
+
+### 일반적인 문제
+
+1. **캐시 관련 오류**
+   - `.cache/` 디렉토리 삭제 후 재시도
+
+2. **프록시 연결 오류**
+   - `proxies.txt` 파일 확인
+   - 프록시 서버 상태 확인
+
+3. **크롤링 속도가 느린 경우**
+   - 캐싱 활성화
+   - 비동기 검색 사용 (`use_async=True`)
+   - 최대 결과 수 줄이기
+
+### 로그 확인
+
+```bash
+# 최신 로그 확인
+tail -f logs/crawler_$(date +%Y%m%d).log
+```
