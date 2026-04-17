@@ -12,7 +12,7 @@
 
 from web_crawler import (
     WebCrawler, ExcelExporter, FilterCriteria,
-    ResultFilter, ProxyManager
+    ResultFilter, ProxyManager, DataVisualizer, DataAnalyzer
 )
 from datetime import datetime, timedelta
 
@@ -333,6 +333,59 @@ def example_9_proxy_setup():
     crawler_with_proxy.close()
 
 
+def example_10_data_visualization():
+    """예시 10: 데이터 시각화"""
+    print("\n" + "=" * 60)
+    print("예시 10: 데이터 시각화")
+    print("=" * 60)
+
+    # 크롤러 및 시각화 초기화
+    crawler = WebCrawler(use_cache=True)
+    exporter = ExcelExporter()
+    visualizer = DataVisualizer()
+
+    keyword = "데이터 분석"
+
+    print(f"\n🔍 '{keyword}' 데이터 수집...")
+
+    # 데이터 수집
+    data = crawler.search_google_news(keyword, max_results=20)
+
+    if data:
+        # Excel 저장
+        exporter.save_to_excel(data, "data_analysis_news.xlsx", "데이터분석_뉴스")
+
+        print(f"\n📊 시각화 차트 생성 중...")
+
+        # 모든 차트 생성
+        all_charts = visualizer.generate_all_charts(data, "data_analysis")
+
+        print(f"\n✅ 생성된 차트 ({len(all_charts)}개):")
+        for chart_type, path in all_charts.items():
+            print(f"   - {chart_type}: {path}")
+
+        # 데이터 분석
+        analyzer = DataAnalyzer()
+        keyword_counts = analyzer.analyze_by_keyword(data)
+        source_counts = analyzer.analyze_by_source(data)
+        date_counts = analyzer.analyze_by_date(data)
+
+        print(f"\n📈 데이터 분석 결과:")
+        print(f"   - 총 게시글 수: {len(data)}개")
+        print(f"   - 키워드 종류: {len(keyword_counts)}개")
+        print(f"   - 출처 종류: {len(source_counts)}개")
+        print(f"   - 날짜 범위: {len(date_counts)}일")
+
+        # 상위 출처
+        if source_counts:
+            top_sources = sorted(source_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+            print(f"\n   상위 출처 5개:")
+            for source, count in top_sources:
+                print(f"   - {source}: {count}개")
+
+    crawler.close()
+
+
 if __name__ == "__main__":
     import time
 
@@ -349,6 +402,7 @@ if __name__ == "__main__":
         ("캐시 관리", example_7_cache_management),
         ("종합 검색", example_8_comprehensive),
         ("프록시 설정", example_9_proxy_setup),
+        ("데이터 시각화", example_10_data_visualization),
     ]
 
     print("\n실행할 예시를 선택하세요:")
