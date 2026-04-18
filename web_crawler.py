@@ -34,6 +34,8 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 from collections import Counter
+import webbrowser
+import os
 
 
 # ============================================================================
@@ -1325,7 +1327,7 @@ class DataVisualizer:
         return str(save_path)
 
     def create_pie_chart(self, data: Dict[str, int], title: str,
-                        save_path: Optional[str] = None) -> str:
+                        save_path: Optional[str] = None, open_browser: bool = False) -> str:
         """
         파이차트 생성 (matplotlib)
 
@@ -1333,6 +1335,7 @@ class DataVisualizer:
             data: {라벨: 값} 딕셔너리
             title: 차트 제목
             save_path: 저장 경로
+            open_browser: 브라우저에서 바로 열기 여부
 
         Returns:
             저장된 파일 경로
@@ -1369,6 +1372,16 @@ class DataVisualizer:
         plt.close()
 
         logger.info(f"파이차트 저장 완료: {save_path}")
+
+        # 브라우저에서 열기 (이미지 파일의 경우 기본 뷰어로 열림)
+        if open_browser:
+            try:
+                file_path = str(save_path.absolute()) if isinstance(save_path, Path) else str(save_path)
+                webbrowser.open(f'file://{os.path.abspath(file_path)}')
+                logger.info(f"브라우저에서 파일 열기: {file_path}")
+            except Exception as e:
+                logger.warning(f"브라우저 열기 실패: {e}")
+
         return str(save_path)
 
     def create_interactive_bar(self, data: Dict[str, int], title: str,
@@ -1480,7 +1493,7 @@ class DataVisualizer:
 
     def create_dashboard(self, data: List[Dict[str, str]],
                         title: str = "크롤링 데이터 분석 대시보드",
-                        save_path: Optional[str] = None) -> str:
+                        save_path: Optional[str] = None, open_browser: bool = True) -> str:
         """
         종합 대시보드 생성
 
@@ -1488,6 +1501,7 @@ class DataVisualizer:
             data: 분석할 데이터
             title: 대시보드 제목
             save_path: 저장 경로
+            open_browser: 브라우저에서 바로 열기 여부 (기본값: True)
 
         Returns:
             저장된 파일 경로
@@ -1568,16 +1582,26 @@ class DataVisualizer:
         fig.write_html(str(save_path))
         logger.info(f"종합 대시보드 저장 완료: {save_path}")
 
+        # 브라우저에서 열기
+        if open_browser:
+            try:
+                file_path = str(save_path.absolute()) if isinstance(save_path, Path) else str(save_path)
+                webbrowser.open(f'file://{os.path.abspath(file_path)}')
+                logger.info(f"브라우저에서 대시보드 열기: {file_path}")
+            except Exception as e:
+                logger.warning(f"브라우저 열기 실패: {e}")
+
         return str(save_path)
 
     def generate_all_charts(self, data: List[Dict[str, str]],
-                           prefix: str = "analysis") -> Dict[str, str]:
+                           prefix: str = "analysis", open_browser: bool = True) -> Dict[str, str]:
         """
         모든 차트 생성
 
         Args:
             data: 분석할 데이터
             prefix: 파일명 접두사
+            open_browser: 브라우저에서 바로 열기 여부 (기본값: True)
 
         Returns:
             {차트종류: 파일경로} 딕셔너리
@@ -1620,8 +1644,8 @@ class DataVisualizer:
                 date_counts, "일자별 게시글 추이 (인터랙티브)", "날짜", "게시글 수"
             )
 
-        # 종합 대시보드
-        results['dashboard'] = self.create_dashboard(data)
+        # 종합 대시보드 (브라우저 자동 열기)
+        results['dashboard'] = self.create_dashboard(data, open_browser=open_browser)
 
         logger.info(f"전체 차트 생성 완료: {len(results)}개 파일")
         return results
