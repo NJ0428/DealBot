@@ -29,6 +29,11 @@ from diskcache import Cache
 from tqdm import tqdm
 from requests.exceptions import RequestException, Timeout, HTTPError, ConnectionError
 from dataclasses import dataclass, field
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+from collections import Counter
 
 
 # ============================================================================
@@ -68,6 +73,14 @@ class Config:
     # 로그 관련
     LOG_DIR: str = "logs"
     LOG_FORMAT: str = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+
+    # 시각화 관련
+    CHART_DIR: str = "charts"
+    DASHBOARD_DIR: str = "dashboard"
+    CHART_WIDTH: int = 12
+    CHART_HEIGHT: int = 6
+    PLOTLY_WIDTH: int = 1200
+    PLOTLY_HEIGHT: int = 600
 
 
 def setup_logging(log_dir: str = Config.LOG_DIR) -> logging.Logger:
@@ -1083,6 +1096,538 @@ class ExcelExporter:
 
 
 # ============================================================================
+# 데이터 시각화
+# ============================================================================
+
+class DataAnalyzer:
+    """데이터 분석 클래스"""
+
+    @staticmethod
+    def analyze_by_keyword(data: List[Dict[str, str]]) -> Dict[str, int]:
+        """
+        키워드별 게시글 수 분석
+
+        Args:
+            data: 분석할 데이터
+
+        Returns:
+            {키워드: 게시글수} 딕셔너리
+        """
+        keyword_counts = Counter()
+        for item in data:
+            keyword = item.get('키워드', '미분류')
+            keyword_counts[keyword] += 1
+
+        return dict(keyword_counts)
+
+    @staticmethod
+    def analyze_by_source(data: List[Dict[str, str]]) -> Dict[str, int]:
+        """
+        출처별 게시글 수 분석
+
+        Args:
+            data: 분석할 데이터
+
+        Returns:
+            {출처: 게시글수} 딕셔너리
+        """
+        source_counts = Counter()
+        for item in data:
+            # 다양한 출처 필드 확인
+            source = None
+            for field in ['출처', '블로그', '출처/날짜', 'source']:
+                if field in item and item[field]:
+                    if field == '출처/날짜':
+                        source = item[field].split('·')[0].strip() if '·' in item[field] else item[field]
+                    else:
+                        source = item[field]
+                    break
+
+            if source:
+                source_counts[source] += 1
+
+        return dict(source_counts)
+
+    @staticmethod
+    def analyze_by_date(data: List[Dict[str, str]]) -> Dict[str, int]:
+        """
+        일자별 게시글 수 분석
+
+        Args:
+            data: 분석할 데이터
+
+        Returns:
+            {날짜: 게시글수} 딕셔너리
+        """
+        date_counts = Counter()
+        for item in data:
+            date_str = item.get('수집일시', '')
+            if date_str:
+                try:
+                    # 날짜 포맷: 2026-04-13 14:30:00
+                    date_only = date_str.split(' ')[0]
+                    date_counts[date_only] += 1
+                except (IndexError, AttributeError):
+                    continue
+
+        # 날짜순 정렬
+        return dict(sorted(date_counts.items()))
+
+    @staticmethod
+    def extract_top_keywords(data: List[Dict[str, str]], top_n: int = 10) -> List[tuple]:
+        """
+        제목에서 상위 키워드 추출
+
+        Args:
+            data: 분석할 데이터
+            top_n: 추출할 상위 키워드 수
+
+        Returns:
+            [(키워드, 빈도)] 튜플 리스트
+        """
+        # 형태소 분석이 없으므로 공백으로 단어 분리
+        word_counter = Counter()
+
+        for item in data:
+            title = item.get('제목', '')
+            words = title.split()
+            # 불용어 제거 (간단한 예시)
+            stopwords = {'의', '가', '이', '은', '는', '를', '에', '와', '한', '부터', '까지'}
+            words = [w for w in words if len(w) > 1 and w not in stopwords]
+            word_counter.update(words)
+
+        return word_counter.most_common(top_n)
+
+
+class DataVisualizer:
+    """데이터 시각화 클래스"""
+
+    def __init__(self, chart_dir: str = Config.CHART_DIR,
+                 dashboard_dir: str = Config.DASHBOARD_DIR):
+        """
+        시각화 초기화
+
+        Args:
+            chart_dir: 차트 저장 디렉토리
+            dashboard_dir: 대시보드 저장 디렉토리
+        """
+        self.chart_dir = Path(chart_dir)
+        self.dashboard_dir = Path(dashboard_dir)
+        self.chart_dir.mkdir(exist_ok=True)
+        self.dashboard_dir.mkdir(exist_ok=True)
+
+        # matplotlib 한글 폰트 설정
+        plt.rcParams['font.family'] = 'Malgun Gothic'  # Windows
+        plt.rcParams['axes.unicode_minus'] = False
+        plt.rcParams['figure.figsize'] = (Config.CHART_WIDTH, Config.CHART_HEIGHT)
+
+        logger.info(f"데이터 시각화 초기화: {chart_dir}, {dashboard_dir}")
+
+    def create_bar_chart(self, data: Dict[str, int], title: str,
+                        xlabel: str = "항목", ylabel: str = "수량",
+                        save_path: Optional[str] = None) -> str:
+        """
+        막대그래프 생성 (matplotlib)
+
+        Args:
+            data: {라벨: 값} 딕셔너리
+            title: 차트 제목
+            xlabel: X축 라벨
+            ylabel: Y축 라벨
+            save_path: 저장 경로 (None인 경우 자동 생성)
+
+        Returns:
+            저장된 파일 경로
+        """
+        if not data:
+            logger.warning("막대그래프 생성을 위한 데이터가 없습니다.")
+            return ""
+
+        labels = list(data.keys())
+        values = list(data.values())
+
+        plt.figure(figsize=(Config.CHART_WIDTH, Config.CHART_HEIGHT))
+        bars = plt.bar(labels, values, color='steelblue', edgecolor='black', alpha=0.7)
+
+        # 값 표시
+        for bar in bars:
+            height = bar.get_height()
+            plt.text(bar.get_x() + bar.get_width() / 2., height,
+                    f'{int(height)}',
+                    ha='center', va='bottom', fontsize=10)
+
+        plt.xlabel(xlabel, fontsize=12)
+        plt.ylabel(ylabel, fontsize=12)
+        plt.title(title, fontsize=14, fontweight='bold')
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+
+        if save_path is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            save_path = self.chart_dir / f"bar_chart_{timestamp}.png"
+        else:
+            save_path = Path(save_path)
+
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+
+        logger.info(f"막대그래프 저장 완료: {save_path}")
+        return str(save_path)
+
+    def create_line_chart(self, data: Dict[str, int], title: str,
+                         xlabel: str = "날짜", ylabel: str = "수량",
+                         save_path: Optional[str] = None) -> str:
+        """
+        라인차트 생성 (matplotlib)
+
+        Args:
+            data: {날짜: 값} 딕셔너리
+            title: 차트 제목
+            xlabel: X축 라벨
+            ylabel: Y축 라벨
+            save_path: 저장 경로
+
+        Returns:
+            저장된 파일 경로
+        """
+        if not data:
+            logger.warning("라인차트 생성을 위한 데이터가 없습니다.")
+            return ""
+
+        dates = list(data.keys())
+        values = list(data.values())
+
+        plt.figure(figsize=(Config.CHART_WIDTH, Config.CHART_HEIGHT))
+        plt.plot(dates, values, marker='o', linestyle='-', linewidth=2, markersize=8,
+                color='steelblue', markerfacecolor='red', markeredgewidth=2)
+
+        # 값 표시
+        for i, (date, value) in enumerate(zip(dates, values)):
+            plt.text(i, value, f'{int(value)}', ha='center', va='bottom', fontsize=9)
+
+        plt.xlabel(xlabel, fontsize=12)
+        plt.ylabel(ylabel, fontsize=12)
+        plt.title(title, fontsize=14, fontweight='bold')
+        plt.xticks(rotation=45, ha='right')
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+
+        if save_path is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            save_path = self.chart_dir / f"line_chart_{timestamp}.png"
+        else:
+            save_path = Path(save_path)
+
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+
+        logger.info(f"라인차트 저장 완료: {save_path}")
+        return str(save_path)
+
+    def create_pie_chart(self, data: Dict[str, int], title: str,
+                        save_path: Optional[str] = None) -> str:
+        """
+        파이차트 생성 (matplotlib)
+
+        Args:
+            data: {라벨: 값} 딕셔너리
+            title: 차트 제목
+            save_path: 저장 경로
+
+        Returns:
+            저장된 파일 경로
+        """
+        if not data:
+            logger.warning("파이차트 생성을 위한 데이터가 없습니다.")
+            return ""
+
+        labels = list(data.keys())
+        values = list(data.values())
+        colors = plt.cm.Set3(range(len(labels)))
+
+        plt.figure(figsize=(Config.CHART_WIDTH, Config.CHART_HEIGHT))
+        wedges, texts, autotexts = plt.pie(values, labels=labels, autopct='%1.1f%%',
+                                           colors=colors, startangle=90,
+                                           textprops={'fontsize': 10})
+
+        # 퍼센트 텍스트 스타일
+        for autotext in autotexts:
+            autotext.set_color('white')
+            autotext.set_fontweight('bold')
+
+        plt.title(title, fontsize=14, fontweight='bold')
+        plt.axis('equal')
+        plt.tight_layout()
+
+        if save_path is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            save_path = self.chart_dir / f"pie_chart_{timestamp}.png"
+        else:
+            save_path = Path(save_path)
+
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+
+        logger.info(f"파이차트 저장 완료: {save_path}")
+        return str(save_path)
+
+    def create_interactive_bar(self, data: Dict[str, int], title: str,
+                              xlabel: str = "항목", ylabel: str = "수량",
+                              save_path: Optional[str] = None) -> str:
+        """
+        인터랙티브 막대그래프 생성 (Plotly)
+
+        Args:
+            data: {라벨: 값} 딕셔너리
+            title: 차트 제목
+            xlabel: X축 라벨
+            ylabel: Y축 라벨
+            save_path: 저장 경로
+
+        Returns:
+            저장된 파일 경로
+        """
+        if not data:
+            logger.warning("인터랙티브 막대그래프 생성을 위한 데이터가 없습니다.")
+            return ""
+
+        fig = go.Figure(data=[
+            go.Bar(
+                x=list(data.keys()),
+                y=list(data.values()),
+                marker=dict(color='steelblue', line=dict(color='black', width=1)),
+                text=list(data.values()),
+                textposition='outside'
+            )
+        ])
+
+        fig.update_layout(
+            title=dict(text=title, font=dict(size=18, color='darkblue')),
+            xaxis_title=xlabel,
+            yaxis_title=ylabel,
+            width=Config.PLOTLY_WIDTH,
+            height=Config.PLOTLY_HEIGHT,
+            hovermode='x unified'
+        )
+
+        if save_path is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            save_path = self.chart_dir / f"interactive_bar_{timestamp}.html"
+        else:
+            save_path = Path(save_path)
+            if not str(save_path).endswith('.html'):
+                save_path = str(save_path) + '.html'
+
+        fig.write_html(str(save_path))
+        logger.info(f"인터랙티브 막대그래프 저장 완료: {save_path}")
+
+        return str(save_path)
+
+    def create_interactive_line(self, data: Dict[str, int], title: str,
+                               xlabel: str = "날짜", ylabel: str = "수량",
+                               save_path: Optional[str] = None) -> str:
+        """
+        인터랙티브 라인차트 생성 (Plotly)
+
+        Args:
+            data: {날짜: 값} 딕셔너리
+            title: 차트 제목
+            xlabel: X축 라벨
+            ylabel: Y축 라벨
+            save_path: 저장 경로
+
+        Returns:
+            저장된 파일 경로
+        """
+        if not data:
+            logger.warning("인터랙티브 라인차트 생성을 위한 데이터가 없습니다.")
+            return ""
+
+        fig = go.Figure(data=[
+            go.Scatter(
+                x=list(data.keys()),
+                y=list(data.values()),
+                mode='lines+markers',
+                marker=dict(size=10, color='red', line=dict(width=2, color='darkred')),
+                line=dict(width=3, color='steelblue'),
+                text=list(data.values()),
+                textposition='top center',
+                name='게시글 수'
+            )
+        ])
+
+        fig.update_layout(
+            title=dict(text=title, font=dict(size=18, color='darkblue')),
+            xaxis_title=xlabel,
+            yaxis_title=ylabel,
+            width=Config.PLOTLY_WIDTH,
+            height=Config.PLOTLY_HEIGHT,
+            hovermode='x unified'
+        )
+
+        if save_path is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            save_path = self.chart_dir / f"interactive_line_{timestamp}.html"
+        else:
+            save_path = Path(save_path)
+            if not str(save_path).endswith('.html'):
+                save_path = str(save_path) + '.html'
+
+        fig.write_html(str(save_path))
+        logger.info(f"인터랙티브 라인차트 저장 완료: {save_path}")
+
+        return str(save_path)
+
+    def create_dashboard(self, data: List[Dict[str, str]],
+                        title: str = "크롤링 데이터 분석 대시보드",
+                        save_path: Optional[str] = None) -> str:
+        """
+        종합 대시보드 생성
+
+        Args:
+            data: 분석할 데이터
+            title: 대시보드 제목
+            save_path: 저장 경로
+
+        Returns:
+            저장된 파일 경로
+        """
+        if not data:
+            logger.warning("대시보드 생성을 위한 데이터가 없습니다.")
+            return ""
+
+        # 데이터 분석
+        analyzer = DataAnalyzer()
+        keyword_counts = analyzer.analyze_by_keyword(data)
+        source_counts = analyzer.analyze_by_source(data)
+        date_counts = analyzer.analyze_by_date(data)
+        top_keywords = analyzer.extract_top_keywords(data, top_n=10)
+
+        # 서브플롯 생성 (2x2)
+        fig = make_subplots(
+            rows=2, cols=2,
+            subplot_titles=('키워드별 게시글 수', '출처별 게시글 수', '일자별 추이', '상위 키워드'),
+            specs=[[{'type': 'bar'}, {'type': 'pie'}],
+                   [{'type': 'scatter'}, {'type': 'bar'}]]
+        )
+
+        # 1. 키워드별 막대그래프
+        fig.add_trace(
+            go.Bar(x=list(keyword_counts.keys()), y=list(keyword_counts.values()),
+                   marker_color='steelblue', name='키워드'),
+            row=1, col=1
+        )
+
+        # 2. 출처별 파이차트 (상위 10개)
+        top_sources = dict(list(source_counts.items())[:10])
+        fig.add_trace(
+            go.Pie(labels=list(top_sources.keys()), values=list(top_sources.values()),
+                   name='출처'),
+            row=1, col=2
+        )
+
+        # 3. 일자별 라인차트
+        fig.add_trace(
+            go.Scatter(x=list(date_counts.keys()), y=list(date_counts.values()),
+                      mode='lines+markers', name='일자별'),
+            row=2, col=1
+        )
+
+        # 4. 상위 키워드 막대그래프
+        if top_keywords:
+            keywords_list = [k[0] for k in top_keywords]
+            counts_list = [k[1] for k in top_keywords]
+            fig.add_trace(
+                go.Bar(x=keywords_list, y=counts_list,
+                       marker_color='coral', name='키워드 빈도'),
+                row=2, col=2
+            )
+
+        # 레이아웃 업데이트
+        fig.update_layout(
+            title_text=title,
+            title_font_size=20,
+            showlegend=False,
+            height=800,
+            width=1400
+        )
+
+        # 개별 서브플롯 x축 라벨 회전
+        fig.update_xaxes(tickangle=45, row=1, col=1)
+        fig.update_xaxes(tickangle=45, row=2, col=1)
+        fig.update_xaxes(tickangle=45, row=2, col=2)
+
+        if save_path is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            save_path = self.dashboard_dir / f"dashboard_{timestamp}.html"
+        else:
+            save_path = Path(save_path)
+            if not str(save_path).endswith('.html'):
+                save_path = str(save_path) + '.html'
+
+        fig.write_html(str(save_path))
+        logger.info(f"종합 대시보드 저장 완료: {save_path}")
+
+        return str(save_path)
+
+    def generate_all_charts(self, data: List[Dict[str, str]],
+                           prefix: str = "analysis") -> Dict[str, str]:
+        """
+        모든 차트 생성
+
+        Args:
+            data: 분석할 데이터
+            prefix: 파일명 접두사
+
+        Returns:
+            {차트종류: 파일경로} 딕셔너리
+        """
+        analyzer = DataAnalyzer()
+        results = {}
+
+        # 데이터 분석
+        keyword_counts = analyzer.analyze_by_keyword(data)
+        source_counts = analyzer.analyze_by_source(data)
+        date_counts = analyzer.analyze_by_date(data)
+        top_keywords = analyzer.extract_top_keywords(data)
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+        # matplotlib 차트 생성
+        if keyword_counts:
+            results['bar_keyword'] = self.create_bar_chart(
+                keyword_counts, "키워드별 게시글 수", "키워드", "게시글 수"
+            )
+
+        if source_counts:
+            results['pie_source'] = self.create_pie_chart(
+                dict(list(source_counts.items())[:10]), "출처별 게시글 비율 (상위 10개)"
+            )
+
+        if date_counts:
+            results['line_date'] = self.create_line_chart(
+                date_counts, "일자별 게시글 추이", "날짜", "게시글 수"
+            )
+
+        # Plotly 인터랙티브 차트 생성
+        if keyword_counts:
+            results['interactive_bar'] = self.create_interactive_bar(
+                keyword_counts, "키워드별 게시글 수 (인터랙티브)", "키워드", "게시글 수"
+            )
+
+        if date_counts:
+            results['interactive_line'] = self.create_interactive_line(
+                date_counts, "일자별 게시글 추이 (인터랙티브)", "날짜", "게시글 수"
+            )
+
+        # 종합 대시보드
+        results['dashboard'] = self.create_dashboard(data)
+
+        logger.info(f"전체 차트 생성 완료: {len(results)}개 파일")
+        return results
+
+
+# ============================================================================
 # 메인 함수
 # ============================================================================
 
@@ -1100,6 +1645,7 @@ def main() -> None:
 
     crawler = WebCrawler(use_cache=use_cache, use_proxy=use_proxy)
     exporter = ExcelExporter()
+    visualizer = DataVisualizer()  # 시각화 객체 초기화
 
     # 크롤링 모드 선택
     print("\n[크롤링 모드 선택]")
@@ -1108,8 +1654,9 @@ def main() -> None:
     print("3. 사용자 정의 URL 크롤링")
     print("4. 다중 키워드 검색 (Google News)")
     print("5. 필터링 옵션 적용 검색")
+    print("6. 데이터 시각화 분석")
 
-    mode = input("\n모드를 선택하세요 (1-5): ").strip()
+    mode = input("\n모드를 선택하세요 (1-6): ").strip()
 
     all_data: Dict[str, List[Dict[str, str]]] = {}
     filter_criteria = None
@@ -1193,6 +1740,24 @@ def main() -> None:
         if data:
             all_data[f"Filtered_{keyword}"] = data
 
+    elif mode == "6":
+        # 데이터 시각화 분석
+        print("\n[시각화 모드]")
+        print("이미 수집된 데이터로 시각화를 진행합니다.")
+        print("새로운 크롤링을 원하시면 1-5번 메뉴를 이용해주세요.")
+
+        # 캐시된 데이터 중에서 선택 가능하게 하거나, 새로운 검색 후 시각화
+        keyword = input("\n시각화할 검색 키워드 (또는 엔터로 종료): ").strip()
+        if keyword:
+            max_results_input = input(f"최대 결과 수 (기본값: {Config.DEFAULT_MAX_RESULTS}): ").strip()
+            max_results = int(max_results_input) if max_results_input.isdigit() else Config.DEFAULT_MAX_RESULTS
+
+            print(f"\n🔍 '{keyword}' 데이터 수집 및 시각화 중...")
+            data = crawler.search_google_news(keyword, max_results)
+
+            if data:
+                all_data[f"Visualization_{keyword}"] = data
+
     else:
         print("❌ 잘못된 선택입니다.")
         crawler.close()
@@ -1208,11 +1773,36 @@ def main() -> None:
             filename_input = input("\n저장할 파일명 (엔터 시 자동 생성): ").strip()
             filename = filename_input if filename_input else None
             exporter.save_to_excel(data, filename, sheet_name)
+
+            # 시각화 옵션 제공
+            if data:
+                visualize = input("\n데이터 시각화를 생성하시겠습니까? (y/n, 기본값: y): ").strip().lower() != 'n'
+                if visualize:
+                    print("\n📊 시각화 차트 생성 중...")
+                    all_charts = visualizer.generate_all_charts(data, sheet_name)
+                    print(f"✅ 생성된 차트: {len(all_charts)}개")
+                    for chart_type, path in all_charts.items():
+                        print(f"   - {chart_type}: {path}")
         else:
             # 다중 시트
             filename_input = input("\n저장할 파일명 (엔터 시 자동 생성): ").strip()
             filename = filename_input if filename_input else None
             exporter.save_multiple_sheets(all_data, filename)
+
+            # 다중 데이터 시각화 - 모든 데이터 합쳐서 시각화
+            visualize = input("\n데이터 시각화를 생성하시겠습니까? (y/n, 기본값: y): ").strip().lower() != 'n'
+            if visualize:
+                # 모든 데이터를 합쳐서 시각화
+                combined_data = []
+                for data in all_data.values():
+                    combined_data.extend(data)
+
+                if combined_data:
+                    print("\n📊 전체 데이터 시각화 차트 생성 중...")
+                    all_charts = visualizer.generate_all_charts(combined_data, "combined")
+                    print(f"✅ 생성된 차트: {len(all_charts)}개")
+                    for chart_type, path in all_charts.items():
+                        print(f"   - {chart_type}: {path}")
 
         print("\n✨ 프로그램 완료!")
     else:
