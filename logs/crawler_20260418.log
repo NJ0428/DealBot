@@ -1,0 +1,27 @@
+2026-04-18 17:30:05,213 - WebCrawler - INFO - 캐시 시스템 초기화: .cache
+2026-04-18 17:30:05,214 - WebCrawler - INFO - 웹 크롤러 초기화 (캐시: True, 프록시: False)
+2026-04-18 17:30:05,214 - WebCrawler - INFO - 데이터 시각화 초기화: charts, dashboard
+2026-04-18 17:30:06,580 - WebCrawler - INFO - 캐시 저장: news:인공지능:max_results:25 (0개 항목)
+2026-04-18 17:30:06,580 - WebCrawler - INFO - Google News 검색 완료: 인공지능 (0개 항목)
+2026-04-18 17:30:06,586 - WebCrawler - INFO - 크롤러 리소스 정리 완료
+2026-04-18 17:30:11,898 - WebCrawler - INFO - 캐시 시스템 초기화: .cache
+2026-04-18 17:30:11,898 - WebCrawler - INFO - 웹 크롤러 초기화 (캐시: True, 프록시: False)
+2026-04-18 17:30:11,899 - WebCrawler - INFO - 데이터 시각화 초기화: charts, dashboard
+2026-04-18 17:30:13,217 - WebCrawler - INFO - 캐시 저장: news:AI:max_results:25 (0개 항목)
+2026-04-18 17:30:13,217 - WebCrawler - INFO - Google News 검색 완료: AI (0개 항목)
+2026-04-18 17:30:13,223 - WebCrawler - INFO - 크롤러 리소스 정리 완료
+2026-04-18 17:30:19,469 - WebCrawler - INFO - 웹 크롤러 초기화 (캐시: False, 프록시: False)
+2026-04-18 17:30:19,470 - WebCrawler - INFO - 데이터 시각화 초기화: charts, dashboard
+2026-04-18 17:30:21,025 - WebCrawler - INFO - Google News 검색 완료: AI (0개 항목)
+2026-04-18 17:30:21,026 - WebCrawler - INFO - 크롤러 리소스 정리 완료
+2026-04-18 17:30:35,876 - WebCrawler - INFO - 데이터 시각화 초기화: charts, dashboard
+2026-04-18 17:30:36,575 - WebCrawler - INFO - 파이차트 저장 완료: charts\pie_chart_20260418_173036.png
+2026-04-18 17:30:40,073 - WebCrawler - INFO - 종합 대시보드 저장 완료: dashboard\dashboard_20260418_173036.html
+2026-04-18 17:30:43,801 - WebCrawler - INFO - 브라우저에서 대시보드 열기: D:\claude\DealBot\dashboard\dashboard_20260418_173036.html
+2026-04-18 17:30:44,223 - WebCrawler - INFO - 막대그래프 저장 완료: charts\bar_chart_20260418_173044.png
+2026-04-18 17:30:44,572 - WebCrawler - INFO - 파이차트 저장 완료: charts\pie_chart_20260418_173044.png
+2026-04-18 17:30:44,880 - WebCrawler - INFO - 라인차트 저장 완료: charts\line_chart_20260418_173044.png
+2026-04-18 17:30:44,930 - WebCrawler - INFO - 인터랙티브 막대그래프 저장 완료: charts\interactive_bar_20260418_173044.html
+2026-04-18 17:30:44,972 - WebCrawler - INFO - 인터랙티브 라인차트 저장 완료: charts\interactive_line_20260418_173044.html
+2026-04-18 17:30:45,009 - WebCrawler - INFO - 종합 대시보드 저장 완료: dashboard\dashboard_20260418_173044.html
+2026-04-18 17:30:45,009 - WebCrawler - INFO - 전체 차트 생성 완료: 6개 파일

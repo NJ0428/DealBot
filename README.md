@@ -4,6 +4,33 @@
 
 ## ✨ 주요 기능
 
+### 🆕 데이터 시각화 기능
+
+- 📊 **matplotlib/plotly 기반 시각화**: 인터랙티브 차트 자동 생성
+- 📈 **키워드별 게시글 수 막대그래프**: 키워드별 데이터 분포 시각화
+- 📉 **일자별 게시글 추이 라인차트**: 시간에 따른 데이터 변화 추적
+- 🥧 **출처별 비율 파이차트**: 데이터 출처 분석
+- 🎯 **종합 대시보드**: 모든 분석 결과를 하나의 HTML 대시보드로 통합 제공
+- 🌐 **브라우저 자동 열기**: HTML 대시보드 생성 후 자동으로 브라우저에서 확인
+
+```python
+from web_crawler import DataVisualizer
+
+visualizer = DataVisualizer()
+
+# 단일 차트 생성
+visualizer.create_bar_chart(data, "키워드별 게시글 수", "키워드", "게시글 수")
+visualizer.create_line_chart(data, "일자별 게시글 추이", "날짜", "게시글 수")
+visualizer.create_pie_chart(data, "출처별 게시글 비율")
+
+# 인터랙티브 차트 생성 (Plotly)
+visualizer.create_interactive_bar(data, "키워드별 게시글 수 (인터랙티브)")
+visualizer.create_interactive_line(data, "일자별 게시글 추이 (인터랙티브)")
+
+# 모든 차트 한번에 생성
+all_charts = visualizer.generate_all_charts(data, "analysis")
+```
+
 ### 기본 기능
 
 - 🔍 **Google News 검색**: 키워드로 뉴스 검색 및 크롤링
@@ -130,9 +157,12 @@ beautifulsoup4>=4.12.0   # HTML 파싱
 pandas>=2.0.0            # 데이터 처리
 openpyxl>=3.1.0          # Excel 저장
 lxml>=4.9.0              # XML/HTML 파싱
-aiohttp>=3.9.0           # 비동기 HTTP 요청 (신규)
-tqdm>=4.66.0             # 진행률 표시 (신규)
-diskcache>=5.6.0         # 디스크 캐싱 (신규)
+aiohttp>=3.9.0           # 비동기 HTTP 요청
+tqdm>=4.66.0             # 진행률 표시
+diskcache>=5.6.0         # 디스크 캐싱
+matplotlib>=3.7.0        # 데이터 시각화 (신규)
+plotly>=5.14.0           # 인터랙티브 차트 (신규)
+kaleido>=0.2.1           # 정적 이미지 변환 (신규)
 ```
 
 ## 🚀 사용법
@@ -255,6 +285,50 @@ filtered = ResultFilter.filter_by_source(
 exporter.save_to_excel(filtered, "filtered_result.xlsx")
 ```
 
+#### 데이터 시각화
+
+```python
+from web_crawler import DataVisualizer, DataAnalyzer
+
+# 데이터 수집
+data = crawler.search_google_news("인공지능", max_results=30)
+
+# 시각화 객체 초기화
+visualizer = DataVisualizer()
+analyzer = DataAnalyzer()
+
+# 단일 차트 생성
+keyword_counts = analyzer.analyze_by_keyword(data)
+visualizer.create_bar_chart(keyword_counts, "키워드별 게시글 수", "키워드", "게시글 수")
+
+date_counts = analyzer.analyze_by_date(data)
+visualizer.create_line_chart(date_counts, "일자별 게시글 추이", "날짜", "게시글 수")
+
+source_counts = analyzer.analyze_by_source(data)
+visualizer.create_pie_chart(source_counts, "출처별 게시글 비율", open_browser=False)
+
+# 인터랙티브 차트 생성 (Plotly)
+visualizer.create_interactive_bar(keyword_counts, "키워드별 게시글 수 (인터랙티브)")
+visualizer.create_interactive_line(date_counts, "일자별 게시글 추이 (인터랙티브)")
+
+# HTML 대시보드 생성 (브라우저 자동 열기)
+visualizer.create_dashboard(data, "인공지능 뉴스 분석", open_browser=True)
+
+# 모든 차트 한번에 생성
+all_charts = visualizer.generate_all_charts(data, "ai_analysis", open_browser=True)
+
+# 결과 확인
+for chart_type, path in all_charts.items():
+    print(f"{chart_type}: {path}")
+# 출력:
+# bar_keyword: charts/bar_chart_20260413_143022.png
+# pie_source: charts/pie_chart_20260413_143025.png
+# line_date: charts/line_chart_20260413_143028.png
+# interactive_bar: charts/interactive_bar_20260413_143031.html
+# interactive_line: charts/interactive_line_20260413_143034.html
+# dashboard: dashboard/dashboard_20260413_143037.html
+```
+
 ### 3. 예시 실행
 
 ```bash
@@ -272,6 +346,7 @@ python example_usage.py
 7. 캐시 관리
 8. 종합 검색
 9. 프록시 설정
+10. 데이터 시각화
 
 ## 📁 프로젝트 구조
 
@@ -283,6 +358,8 @@ python example_usage.py
 ├── README.md              # 이 파일
 ├── .cache/                # 캐시 디렉토리 (자동 생성)
 ├── logs/                  # 로그 디렉토리 (자동 생성)
+├── charts/                # 차트 저장 디렉토리 (자동 생성)
+├── dashboard/             # 대시보드 저장 디렉토리 (자동 생성)
 └── proxies.txt            # 프록시 리스트 (선택사항)
 ```
 
@@ -299,6 +376,14 @@ Config.REQUEST_DELAY = 2.0            # 요청 간격 (초)
 Config.DEFAULT_MAX_RESULTS = 20       # 기본 최대 결과 수
 Config.CACHE_EXPIRE_HOURS = 24        # 캐시 만료 시간
 Config.MAX_CONCURRENT_REQUESTS = 5    # 최대 동시 요청 수
+
+# 시각화 설정
+Config.CHART_DIR = "charts"           # 차트 저장 디렉토리
+Config.DASHBOARD_DIR = "dashboard"    # 대시보드 저장 디렉토리
+Config.CHART_WIDTH = 12               # 차트 너비
+Config.CHART_HEIGHT = 6               # 차트 높이
+Config.PLOTLY_WIDTH = 1200            # Plotly 차트 너비
+Config.PLOTLY_HEIGHT = 600            # Plotly 차트 높이
 ```
 
 ### 프록시 설정
