@@ -1,0 +1,11 @@
+2026-04-19 15:03:24,911 - WebCrawler - INFO - 데이터 시각화 초기화: charts, dashboard
+2026-04-19 15:03:25,572 - WebCrawler - INFO - 파이차트 저장 완료: charts\pie_chart_20260419_150325.png
+2026-04-19 15:03:29,313 - WebCrawler - INFO - 종합 대시보드 저장 완료: dashboard\dashboard_20260419_150325.html
+2026-04-19 15:03:33,291 - WebCrawler - INFO - 브라우저에서 대시보드 열기: D:\claude\DealBot\dashboard\dashboard_20260419_150325.html
+2026-04-19 15:03:33,640 - WebCrawler - INFO - 막대그래프 저장 완료: charts\bar_chart_20260419_150333.png
+2026-04-19 15:03:33,984 - WebCrawler - INFO - 파이차트 저장 완료: charts\pie_chart_20260419_150333.png
+2026-04-19 15:03:34,373 - WebCrawler - INFO - 라인차트 저장 완료: charts\line_chart_20260419_150334.png
+2026-04-19 15:03:34,433 - WebCrawler - INFO - 인터랙티브 막대그래프 저장 완료: charts\interactive_bar_20260419_150334.html
+2026-04-19 15:03:34,489 - WebCrawler - INFO - 인터랙티브 라인차트 저장 완료: charts\interactive_line_20260419_150334.html
+2026-04-19 15:03:34,534 - WebCrawler - INFO - 종합 대시보드 저장 완료: dashboard\dashboard_20260419_150334.html
+2026-04-19 15:03:34,534 - WebCrawler - INFO - 전체 차트 생성 완료: 6개 파일
