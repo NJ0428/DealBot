@@ -1,0 +1,76 @@
+# 캐시 디렉토리
+.cache/
+disk_cache/
+
+# 로그 디렉토리
+logs/
+*.log
+
+# 시각화 결과
+charts/
+dashboard/
+*.png
+*.jpg
+*.jpeg
+*.html
+
+# Excel 결과
+*.xlsx
+*.xls
+
+# 이메일 설정 (중요: 개인정보 보호)
+email_config.json
+email_auth.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 테스트
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 임시 파일
+*.tmp
+*.temp
+*.bak
+proxies.txt
+
+# 크롤링 결과 HTML
+*.html
+!dashboard/
