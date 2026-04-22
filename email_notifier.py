@@ -16,6 +16,7 @@ from datetime import datetime
 import json
 
 from web_crawler import logger, Config
+from email_template_manager import EmailTemplateManager, RecipientGroupManager
 
 
 class EmailConfig:
@@ -122,16 +123,32 @@ class EmailAuth:
 class EmailNotifier:
     """이메일 알림 시스템"""
 
-    def __init__(self, auth: Optional[EmailAuth] = None):
+    def __init__(self, auth: Optional[EmailAuth] = None, use_templates: bool = True):
         """
         이메일 알림 시스템 초기화
 
         Args:
             auth: 이메일 인증 정보 (None인 경우 자동 생성)
+            use_templates: HTML 템플릿 사용 여부
         """
         self.auth = auth or EmailAuth()
         self.smtp_server = EmailConfig.SMTP_SERVER
         self.smtp_port = EmailConfig.SMTP_PORT
+        self.use_templates = use_templates
+
+        # 템플릿 관리자 초기화
+        if use_templates:
+            try:
+                self.template_manager = EmailTemplateManager()
+                self.recipient_manager = RecipientGroupManager()
+            except Exception as e:
+                logger.warning(f"템플릿 시스템 초기화 실패: {e}")
+                self.use_templates = False
+                self.template_manager = None
+                self.recipient_manager = None
+        else:
+            self.template_manager = None
+            self.recipient_manager = None
 
         logger.info("이메일 알림 시스템 초기화")
 
@@ -564,6 +581,470 @@ class EmailNotifier:
             body=body,
             is_html=True
         )
+
+    # ========== 템플릿 기반 이메일 발송 ==========
+
+    def send_crawling_report_with_template(
+        self,
+        to_email: str,
+        keyword: str,
+        data: List[Dict],
+        excel_file: str,
+        search_type: str = "Google News",
+        show_preview: bool = True
+    ) -> bool:
+        """
+        템플릿 기반 크롤링 리포트 전송
+
+        Args:
+            to_email: 수신자 이메일
+            keyword: 검색 키워드
+            data: 크롤링 데이터
+            excel_file: Excel 파일 경로
+            search_type: 검색 유형
+            show_preview: 데이터 미리보기 표시 여부
+
+        Returns:
+            전송 성공 여부
+        """
+        if not self.use_templates or not self.template_manager:
+            # 템플릿을 사용하지 않는 경우 기존 방식으로 전환
+            return self.send_crawling_report(to_email, keyword, data, excel_file, search_type)
+
+        try:
+            # 현재 시간
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # 첨부 파일 리스트
+            attachment_files = [excel_file] if Path(excel_file).exists() else []
+
+            # 미리보기 데이터
+            preview_data = data[:5] if show_preview and data else None
+
+            # 템플릿 렌더링
+            body = self.template_manager.render_crawling_report(
+                keyword=keyword,
+                search_type=search_type,
+                item_count=len(data),
+                timestamp=timestamp,
+                attachment_files=attachment_files,
+                preview_data=preview_data
+            )
+
+            # 이메일 제목
+            subject = f"[크롤링 완료] '{keyword}' {search_type} 검색 결과 ({timestamp})"
+
+            # 이메일 전송
+            return self.send_email(
+                to_email=to_email,
+                subject=subject,
+                body=body,
+                attachments=attachment_files,
+                is_html=True
+            )
+        except Exception as e:
+            logger.error(f"템플릿 기반 크롤링 리포트 전송 실패: {e}")
+            # 실패 시 기존 방식으로 시도
+            return self.send_crawling_report(to_email, keyword, data, excel_file, search_type)
+
+    def send_multiple_keywords_report_with_template(
+        self,
+        to_email: str,
+        results: Dict[str, List[Dict]],
+        excel_file: str,
+        search_type: str = "Google News"
+    ) -> bool:
+        """
+        템플릿 기반 다중 키워드 리포트 전송
+
+        Args:
+            to_email: 수신자 이메일
+            results: {키워드: 데이터} 딕셔너리
+            excel_file: Excel 파일 경로
+            search_type: 검색 유형
+
+        Returns:
+            전송 성공 여부
+        """
+        if not self.use_templates or not self.template_manager:
+            return self.send_multiple_keywords_report(to_email, results, excel_file, search_type)
+
+        try:
+            # 현재 시간
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # 키워드별 데이터 준비
+            keywords_data = [
+                {"keyword": kw, "count": len(data)}
+                for kw, data in results.items()
+            ]
+
+            # 첨부 파일
+            attachment_files = [excel_file] if Path(excel_file).exists() else []
+
+            # 템플릿 렌더링
+            body = self.template_manager.render_multiple_keywords_report(
+                keywords_data=keywords_data,
+                search_type=search_type,
+                timestamp=timestamp,
+                attachment_files=attachment_files
+            )
+
+            # 이메일 제목
+            subject = f"[크롤링 완료] 다중 키워드 검색 결과 ({len(results)}개 키워드, {timestamp})"
+
+            # 이메일 전송
+            return self.send_email(
+                to_email=to_email,
+                subject=subject,
+                body=body,
+                attachments=attachment_files,
+                is_html=True
+            )
+        except Exception as e:
+            logger.error(f"템플릿 기반 다중 키워드 리포트 전송 실패: {e}")
+            return self.send_multiple_keywords_report(to_email, results, excel_file, search_type)
+
+    def send_error_report_with_template(
+        self,
+        to_email: str,
+        error_message: str,
+        keyword: Optional[str] = None,
+        error_type: str = "크롤링 오류"
+    ) -> bool:
+        """
+        템플릿 기반 오류 리포트 전송
+
+        Args:
+            to_email: 수신자 이메일
+            error_message: 오류 메시지
+            keyword: 검색 키워드 (선택)
+            error_type: 오류 유형
+
+        Returns:
+            전송 성공 여부
+        """
+        if not self.use_templates or not self.template_manager:
+            return self.send_error_report(to_email, error_message, keyword)
+
+        try:
+            # 현재 시간
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # 템플릿 렌더링
+            body = self.template_manager.render_error_report(
+                error_message=error_message,
+                keyword=keyword,
+                error_type=error_type,
+                timestamp=timestamp
+            )
+
+            # 이메일 제목
+            subject = f"[❌ {error_type}] {keyword if keyword else '알 수 없는 키워드'} ({timestamp})"
+
+            # 이메일 전송
+            return self.send_email(
+                to_email=to_email,
+                subject=subject,
+                body=body,
+                is_html=True
+            )
+        except Exception as e:
+            logger.error(f"템플릿 기반 오류 리포트 전송 실패: {e}")
+            return self.send_error_report(to_email, error_message, keyword)
+
+    def send_custom_email_with_template(
+        self,
+        to_email: str,
+        subject: str,
+        title: str,
+        content: str,
+        icon: str = "📧",
+        subtitle: str = "",
+        footer_text: str = "",
+        attachments: Optional[List[str]] = None
+    ) -> bool:
+        """
+        템플릿 기반 사용자 정의 이메일 전송
+
+        Args:
+            to_email: 수신자 이메일
+            subject: 이메일 제목
+            title: 이메일 내 제목
+            content: 이메일 본문 (HTML)
+            icon: 아이콘
+            subtitle: 부제목
+            footer_text: 푸터 텍스트
+            attachments: 첨부 파일
+
+        Returns:
+            전송 성공 여부
+        """
+        if not self.use_templates or not self.template_manager:
+            # 템플릿을 사용하지 않는 경우 기본 HTML 전송
+            return self.send_email(to_email, subject, content, attachments, is_html=True)
+
+        try:
+            # 템플릿 렌더링
+            body = self.template_manager.render_custom_email(
+                title=title,
+                content=content,
+                icon=icon,
+                subtitle=subtitle,
+                footer_text=footer_text
+            )
+
+            # 이메일 전송
+            return self.send_email(
+                to_email=to_email,
+                subject=subject,
+                body=body,
+                attachments=attachments,
+                is_html=True
+            )
+        except Exception as e:
+            logger.error(f"템플릿 기반 사용자 정의 이메일 전송 실패: {e}")
+            return self.send_email(to_email, subject, content, attachments, is_html=True)
+
+    # ========== 대량 발송 기능 ==========
+
+    def send_bulk_email(
+        self,
+        recipients: List[str],
+        subject: str,
+        body: str,
+        attachments: Optional[List[str]] = None,
+        is_html: bool = False,
+        delay: float = 1.0
+    ) -> Dict[str, bool]:
+        """
+        대량 이메일 발송
+
+        Args:
+            recipients: 수신자 이메일 리스트
+            subject: 이메일 제목
+            body: 이메일 본문
+            attachments: 첨부 파일
+            is_html: HTML 형식 여부
+            delay: 전송 지연 시간 (초) - 스팸 방지
+
+        Returns:
+            {이메일: 성공여부} 딕셔너리
+        """
+        import time
+
+        results = {}
+        total = len(recipients)
+        success_count = 0
+
+        logger.info(f"대량 이메일 발송 시작: {total}명")
+
+        for idx, recipient in enumerate(recipients, 1):
+            try:
+                logger.info(f"이메일 전송 중... ({idx}/{total}): {recipient}")
+
+                success = self.send_email(
+                    to_email=recipient,
+                    subject=subject,
+                    body=body,
+                    attachments=attachments,
+                    is_html=is_html
+                )
+
+                results[recipient] = success
+
+                if success:
+                    success_count += 1
+                    logger.info(f"✅ 전송 성공: {recipient}")
+                else:
+                    logger.warning(f"❌ 전송 실패: {recipient}")
+
+                # 지연 시간 (스팸 방지)
+                if idx < total:
+                    time.sleep(delay)
+
+            except Exception as e:
+                logger.error(f"이메일 전송 오류 ({recipient}): {e}")
+                results[recipient] = False
+
+        # 결과 요약
+        logger.info(f"대량 이메일 발송 완료: {success_count}/{total} 성공")
+
+        return results
+
+    def send_email_to_group(
+        self,
+        group_name: str,
+        subject: str,
+        body: str,
+        attachments: Optional[List[str]] = None,
+        is_html: bool = False,
+        delay: float = 1.0
+    ) -> Dict[str, bool]:
+        """
+        그룹에 이메일 발송
+
+        Args:
+            group_name: 그룹명
+            subject: 이메일 제목
+            body: 이메일 본문
+            attachments: 첨부 파일
+            is_html: HTML 형식 여부
+            delay: 전송 지연 시간 (초)
+
+        Returns:
+            {이메일: 성공여부} 딕셔너리
+        """
+        if not self.recipient_manager:
+            logger.error("수신자 관리자가 초기화되지 않았습니다.")
+            return {}
+
+        recipients = self.recipient_manager.get_group_recipients(group_name)
+
+        if not recipients:
+            logger.warning(f"그룹 '{group_name}'에 수신자가 없습니다.")
+            return {}
+
+        logger.info(f"그룹 '{group_name}'에 이메일 발송: {len(recipients)}명")
+
+        return self.send_bulk_email(
+            recipients=recipients,
+            subject=subject,
+            body=body,
+            attachments=attachments,
+            is_html=is_html,
+            delay=delay
+        )
+
+    def send_crawling_report_to_group(
+        self,
+        group_name: str,
+        keyword: str,
+        data: List[Dict],
+        excel_file: str,
+        search_type: str = "Google News",
+        use_template: bool = True,
+        delay: float = 2.0
+    ) -> Dict[str, bool]:
+        """
+        그룹에 크롤링 리포트 발송
+
+        Args:
+            group_name: 그룹명
+            keyword: 검색 키워드
+            data: 크롤링 데이터
+            excel_file: Excel 파일 경로
+            search_type: 검색 유형
+            use_template: 템플릿 사용 여부
+            delay: 전송 지연 시간 (초)
+
+        Returns:
+            {이메일: 성공여부} 딕셔너리
+        """
+        if not self.recipient_manager:
+            logger.error("수신자 관리자가 초기화되지 않았습니다.")
+            return {}
+
+        recipients = self.recipient_manager.get_group_recipients(group_name)
+
+        if not recipients:
+            logger.warning(f"그룹 '{group_name}'에 수신자가 없습니다.")
+            return {}
+
+        results = {}
+        total = len(recipients)
+
+        logger.info(f"그룹 '{group_name}'에 크롤링 리포트 발송: {total}명")
+
+        for idx, recipient in enumerate(recipients, 1):
+            try:
+                logger.info(f"리포트 전송 중... ({idx}/{total}): {recipient}")
+
+                if use_template:
+                    success = self.send_crawling_report_with_template(
+                        to_email=recipient,
+                        keyword=keyword,
+                        data=data,
+                        excel_file=excel_file,
+                        search_type=search_type
+                    )
+                else:
+                    success = self.send_crawling_report(
+                        to_email=recipient,
+                        keyword=keyword,
+                        data=data,
+                        excel_file=excel_file,
+                        search_type=search_type
+                    )
+
+                results[recipient] = success
+
+                # 지연 시간
+                if idx < total:
+                    import time
+                    time.sleep(delay)
+
+            except Exception as e:
+                logger.error(f"리포트 전송 오류 ({recipient}): {e}")
+                results[recipient] = False
+
+        success_count = sum(1 for v in results.values() if v)
+        logger.info(f"그룹 리포트 발송 완료: {success_count}/{total} 성공")
+
+        return results
+
+    # ========== 수신자 그룹 관리 기능 ==========
+
+    def get_recipient_manager(self) -> Optional[RecipientGroupManager]:
+        """수신자 관리자 반환"""
+        return self.recipient_manager
+
+    def list_recipient_groups(self) -> List[str]:
+        """수신자 그룹 리스트 조회"""
+        if self.recipient_manager:
+            return self.recipient_manager.list_groups()
+        return []
+
+    def create_recipient_group(
+        self,
+        group_name: str,
+        name: str,
+        description: str = "",
+        recipients: Optional[List[str]] = None
+    ) -> bool:
+        """
+        수신자 그룹 생성
+
+        Args:
+            group_name: 그룹 ID (영문)
+            name: 그룹 이름
+            description: 그룹 설명
+            recipients: 수신자 리스트
+
+        Returns:
+            생성 성공 여부
+        """
+        if self.recipient_manager:
+            return self.recipient_manager.create_group(group_name, name, description, recipients)
+        return False
+
+    def add_recipient_to_group(self, group_name: str, email: str) -> bool:
+        """그룹에 수신자 추가"""
+        if self.recipient_manager:
+            return self.recipient_manager.add_recipient_to_group(group_name, email)
+        return False
+
+    def remove_recipient_from_group(self, group_name: str, email: str) -> bool:
+        """그룹에서 수신자 제거"""
+        if self.recipient_manager:
+            return self.recipient_manager.remove_recipient_from_group(group_name, email)
+        return False
+
+    def get_group_recipients(self, group_name: str) -> List[str]:
+        """그룹 수신자 리스트 조회"""
+        if self.recipient_manager:
+            return self.recipient_manager.get_group_recipients(group_name)
+        return []
 
 
 def setup_email_config():

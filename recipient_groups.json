@@ -1,0 +1,27 @@
+{
+  "default": {
+    "name": "기본 수신자",
+    "description": "기본 수신자 그룹",
+    "recipients": []
+  },
+  "admins": {
+    "name": "관리자",
+    "description": "시스템 관리자 그룹",
+    "recipients": []
+  },
+  "developers": {
+    "name": "개발팀",
+    "description": "개발팀 그룹",
+    "recipients": []
+  },
+  "marketing": {
+    "name": "마케팅팀",
+    "description": "마케팅 관련 크롤링 결과를 받는 팀",
+    "recipients": []
+  },
+  "research": {
+    "name": "연구팀",
+    "description": "연구/개발 관련 크롤링 결과를 받는 팀",
+    "recipients": []
+  }
+}
