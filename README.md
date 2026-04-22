@@ -4,6 +4,31 @@
 
 ## ✨ 주요 기능
 
+### 🆕 이메일 알림 시스템
+
+- 📧 **Gmail SMTP 연동**: 안전하고 신뢰할 수 있는 Gmail SMTP 서버 사용
+- 📊 **자동 리포트 생성**: 크롤링 완료 시 HTML 형식의 이쁜 리포트 자동 생성
+- 📎 **Excel 파일 자동 첨부**: 크롤링 결과 Excel 파일 자동 첨부
+- 🔔 **다중 수신자 지원**: 여러 수신자에게 동시 전송 가능
+- ⚠️ **오류 알림**: 크롤링 실패 시 오류 리포트 자동 전송
+- 🔐 **안전한 인증**: 앱 비밀번호를 사용한 안전한 인증 방식
+
+```python
+from email_notifier import EmailNotifier, EmailAuth
+
+# 이메일 알림 시스템 초기화
+auth = EmailAuth()
+notifier = EmailNotifier(auth)
+
+# 크롤링 완료 후 자동 이메일 전송
+notifier.send_crawling_report(
+    to_email="recipient@example.com",
+    keyword="인공지능",
+    data=crawled_data,
+    excel_file="result.xlsx"
+)
+```
+
 ### 🆕 데이터 시각화 기능
 
 - 📊 **matplotlib/plotly 기반 시각화**: 인터랙티브 차트 자동 생성
@@ -142,6 +167,7 @@ data = crawler.search_google_news(
 
 - Python 3.8+
 - pip
+- Gmail 계정 (이메일 알림 사용 시)
 
 ### 패키지 설치
 
@@ -160,14 +186,37 @@ lxml>=4.9.0              # XML/HTML 파싱
 aiohttp>=3.9.0           # 비동기 HTTP 요청
 tqdm>=4.66.0             # 진행률 표시
 diskcache>=5.6.0         # 디스크 캐싱
-matplotlib>=3.7.0        # 데이터 시각화 (신규)
-plotly>=5.14.0           # 인터랙티브 차트 (신규)
-kaleido>=0.2.1           # 정적 이미지 변환 (신규)
+matplotlib>=3.7.0        # 데이터 시각화
+plotly>=5.14.0           # 인터랙티브 차트
+kaleido>=0.2.1           # 정적 이미지 변환
+smtplib (내장)           # 이메일 전송 (Python 내장)
 ```
 
 ## 🚀 사용법
 
-### 1. 기본 사용 (대화형 모드)
+### 1. 이메일 설정 (이메일 알림 사용 시)
+
+이메일 알림 기능을 사용하려면 먼저 Gmail SMTP 설정이 필요합니다.
+
+#### 1단계: Gmail 앱 비밀번호 생성
+
+1. [Google 계정](https://myaccount.google.com/)에 로그인
+2. **[보안]** 섹션으로 이동
+3. **[2단계 인증]** 활성화 (필수)
+4. **[앱 비밀번호]** 섹션에서 새 앱 비밀번호 생성
+5. **[메일]** 및 **[Windows 컴퓨터]** 선택 후 생성
+6. 생성된 16자리 비밀번호 복사
+
+#### 2단계: 이메일 설정 실행
+
+```bash
+# 이메일 설정 도구 실행
+python email_example.py
+
+# 옵션 1: 이메일 설정 선택
+```
+
+### 2. 기본 사용 (대화형 모드)
 
 ```bash
 python web_crawler.py
@@ -329,6 +378,49 @@ for chart_type, path in all_charts.items():
 # dashboard: dashboard/dashboard_20260413_143037.html
 ```
 
+#### 이메일 알림 시스템
+
+```python
+from web_crawler import WebCrawler, ExcelExporter
+from email_notifier import EmailNotifier, EmailAuth
+
+# 크롤러 및 이메일 알림 시스템 초기화
+crawler = WebCrawler(use_cache=True)
+exporter = ExcelExporter()
+auth = EmailAuth()
+notifier = EmailNotifier(auth)
+
+# 데이터 수집
+keyword = "인공지능"
+data = crawler.search_google_news(keyword, max_results=10)
+
+# Excel 저장
+excel_file = f"{keyword}_result.xlsx"
+exporter.save_to_excel(data, excel_file, "뉴스")
+
+# 이메일 전송
+notifier.send_crawling_report(
+    to_email=auth.get_email(),
+    keyword=keyword,
+    data=data,
+    excel_file=excel_file,
+    search_type="Google News"
+)
+
+crawler.close()
+```
+
+**이메일 예시 옵션:**
+- `send_crawling_report`: 기본 크롤링 완료 리포트 전송
+- `send_multiple_keywords_report`: 다중 키워드 검색 결과 리포트 전송
+- `send_error_report`: 오류 발생 시 알림 전송
+- `send_email`: 사용자 정의 이메일 전송
+
+```bash
+# 이메일 예시 실행
+python email_example.py
+```
+
 ### 3. 예시 실행
 
 ```bash
@@ -353,13 +445,17 @@ python example_usage.py
 ```
 .
 ├── web_crawler.py          # 메인 크롤러 모듈
+├── email_notifier.py       # 이메일 알림 시스템 (신규)
 ├── example_usage.py        # 사용 예시 스크립트
+├── email_example.py        # 이메일 알림 예시 스크립트 (신규)
 ├── requirements.txt        # 의존성 패키지
 ├── README.md              # 이 파일
+├── EMAIL_GUIDE.md         # 이메일 알림 시스템 가이드 (신규)
 ├── .cache/                # 캐시 디렉토리 (자동 생성)
 ├── logs/                  # 로그 디렉토리 (자동 생성)
 ├── charts/                # 차트 저장 디렉토리 (자동 생성)
 ├── dashboard/             # 대시보드 저장 디렉토리 (자동 생성)
+├── email_config.json      # 이메일 설정 파일 (자동 생성)
 └── proxies.txt            # 프록시 리스트 (선택사항)
 ```
 
