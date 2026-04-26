@@ -54,8 +54,8 @@ class ExcelChartConfig:
 
     # 색상 테마
     COLORS: List[str] = [
-        'FF6B9BD1', 'FFED7D31', 'FFA5A5A5', 'FFFFC000',
-        'FF4472C4', 'FF70AD47', 'FFFF0000', 'FF002060'
+        '#6B9BD1', '#ED7D31', '#A5A5A5', '#FFC000',
+        '#4472C4', '#70AD47', '#FF0000', '#002060'
     ]
 
     # 폰트 설정

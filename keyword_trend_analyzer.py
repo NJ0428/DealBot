@@ -1131,6 +1131,162 @@ class KeywordTrendSystem:
 
         print("\n" + "="*60 + "\n")
 
+    def generate_excel_report(self, results: Dict,
+                             excel_path: str = None,
+                             include_charts: bool = True) -> str:
+        """
+        Excel 리포트 생성 (차트 포함)
+
+        Args:
+            results: 분석 결과 딕셔너리
+            excel_path: Excel 파일 경로 (None이면 자동 생성)
+            include_charts: 차트 포함 여부
+
+        Returns:
+            생성된 Excel 파일 경로
+        """
+        from excel_chart_integration import ExcelReportGenerator
+        from openpyxl import Workbook
+        import openpyxl
+
+        try:
+            # Excel 파일 경로 설정
+            if excel_path is None:
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                excel_path = f"{self.config.CHART_DIR}/keyword_analysis_{timestamp}.xlsx"
+
+            # 기본 Excel 파일 생성
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "분석 개요"
+
+            # 요약 정보 작성
+            ws['A1'] = '키워드 트렌드 분석 리포트'
+            ws['A1'].font = Font(size=16, bold=True)
+            ws['A3'] = f'생성일시: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+
+            row = 5
+
+            # 인기 키워드
+            if 'hot_keywords' in results:
+                ws[f'A{row}'] = '상위 인기 키워드'
+                ws[f'A{row}'].font = Font(size=14, bold=True)
+                row += 1
+
+                ws[f'A{row}'] = '순위'
+                ws[f'B{row}'] = '키워드'
+                ws[f'C{row}'] = '빈도수'
+                ws[f'A{row}'].font = Font(bold=True)
+                ws[f'B{row}'].font = Font(bold=True)
+                ws[f'C{row}'].font = Font(bold=True)
+                row += 1
+
+                for i, (keyword, freq) in enumerate(results['hot_keywords'][:20], 1):
+                    ws[f'A{row}'] = i
+                    ws[f'B{row}'] = keyword
+                    ws[f'C{row}'] = freq
+                    row += 1
+
+                row += 2
+
+            # 클러스터 정보
+            if 'clusters' in results:
+                ws[f'A{row}'] = '키워드 클러스터'
+                ws[f'A{row}'].font = Font(size=14, bold=True)
+                row += 1
+
+                for cluster_id, keywords in results['clusters'].items():
+                    ws[f'A{row}'] = f'클러스터 {cluster_id}'
+                    ws[f'B{row}'] = ', '.join(keywords[:10])
+                    row += 1
+
+            wb.save(excel_path)
+
+            # 차트 삽입
+            if include_charts:
+                generator = ExcelReportGenerator()
+
+                # 데이터 준비
+                trend_df = results.get('trend_data', pd.DataFrame())
+                growth_df = results.get('growth_data', pd.DataFrame())
+
+                # 키워드 빈도 데이터
+                if 'hot_keywords' in results:
+                    keyword_freq_list = [(k, int(v)) for k, v in results['hot_keywords']]
+                else:
+                    keyword_freq_list = []
+
+                # 네트워크 그래프
+                network = results.get('network')
+
+                # 워드클라우드 데이터
+                if 'hot_keywords' in results:
+                    word_freq = {k: int(v) for k, v in results['hot_keywords']}
+                else:
+                    word_freq = None
+
+                # 종합 리포트 생성
+                chart_results = generator.generate_comprehensive_report(
+                    excel_path=excel_path,
+                    trend_df=trend_df,
+                    growth_df=growth_df,
+                    keyword_freq=keyword_freq_list,
+                    network_graph=network,
+                    word_freq=word_freq
+                )
+
+                self.logger.info(f"Excel 리포트 생성 완료 (차트 {sum(chart_results.values())}개)")
+
+            return excel_path
+
+        except Exception as e:
+            self.logger.error(f"Excel 리포트 생성 실패: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def monitor_and_alert_trending(self, results: Dict,
+                                  recipients: List[str] = None) -> Dict:
+        """
+        급상승 키워드 모니터링 및 알림
+
+        Args:
+            results: 분석 결과 딕셔너리
+            recipients: 수신자 이메일 리스트
+
+        Returns:
+            알림 결과
+        """
+        from keyword_trend_alert_system import KeywordAlertSystem
+
+        try:
+            # 데이터 확인
+            trend_df = results.get('trend_data', pd.DataFrame())
+            growth_df = results.get('growth_data', pd.DataFrame())
+
+            if trend_df.empty:
+                self.logger.info("트렌드 데이터가 없어 알림을 건너뜁니다.")
+                return {'detected': 0, 'alerted': 0, 'keywords': []}
+
+            # 알림 시스템 초기화
+            alert_system = KeywordAlertSystem()
+
+            # 모니터링 및 알림
+            alert_result = alert_system.monitor_and_alert(
+                trend_df=trend_df,
+                growth_df=growth_df,
+                recipients=recipients
+            )
+
+            if alert_result['alerted'] > 0:
+                self.logger.info(f"급상승 키워드 알림 발송: {alert_result['alerted']}개")
+
+            return alert_result
+
+        except Exception as e:
+            self.logger.error(f"급상승 키워드 알림 실패: {e}")
+            return {'detected': 0, 'alerted': 0, 'keywords': []}
+
 
 # ============================================================================
 # 메인 실행
