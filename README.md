@@ -4,6 +4,122 @@
 
 ## ✨ 주요 기능
 
+### 🆕 RSS 피드 자동 생성
+
+- 📡 **RSS 2.0 지원**: 표준 RSS 2.0 형식으로 피드 생성
+- 🔄 **자동 업데이트**: APScheduler 기반 정기적 자동 크롤링 및 피드 업데이트
+- ⏰ **유연한 스케줄링**: 간격 기반(매 N분/시간) 및 크론 기반(매일 특정 시간) 스케줄링
+- 📊 **멀티피드 지원**: 여러 키워드에 대한 개별 피드 및 통합 피드 생성
+- 🎯 **커스터마이징**: 피드 제목, 설명, 카테고리 등 완전한 커스터마이징
+- 💾 **설정 저장/로드**: 스케줄 설정을 JSON 파일로 저장 및 로드
+
+```python
+from rss_feed_generator import create_feed_from_crawler_data
+from feed_scheduler import FeedManager
+
+# 간단한 RSS 피드 생성
+feed_path = create_feed_from_crawler_data("AI", crawled_data)
+
+# 자동 스케줄링 (매 30분마다 업데이트)
+manager = FeedManager()
+manager.quick_start(
+    keywords=["AI", "블록체인", "메타버스"],
+    schedule_type='interval',
+    interval_minutes=30,
+    run_immediately=True
+)
+```
+
+### 🆕 인기 급상승 키워드 탐지 및 알림
+
+- 🔥 **자동 급상승 탐지**: 성장률, 순위 상승, 변동성 기반 다중 기준 탐지
+- 📊 **스코어링 시스템**: 가중치 기반 종합 점수 계산 (0-100점)
+- 📧 **실시간 알림**: 이메일 자동 발송 및 쿨다운 시스템
+- 📝 **알림 히스토리**: 중복 알림 방지 및 로그 관리
+- 🎯 **커스터마이징**: 탐지 기준, 알림 빈도, 수신자 설정
+
+```python
+from keyword_trend_alert_system import KeywordAlertSystem
+
+# 시스템 초기화
+alert_system = KeywordAlertSystem(email_notifier=email_notifier)
+
+# 급상승 키워드 탐지 및 알림
+result = alert_system.monitor_and_alert(
+    trend_df=trend_data,
+    growth_df=growth_data,
+    recipients=["user@example.com"]
+)
+
+print(f"탐지: {result['detected']}개, 알림: {result['alerted']}개")
+```
+
+### 🆕 Excel 차트 자동 삽입
+
+- 📊 **5가지 차트 타입**: 빈도 막대그래프, 트렌드 라인, 성장률 히트맵, 네트워크, 워드클라우드
+- 🖼️ **고해상도 이미지**: 150-200 DPI 차트 자동 생성
+- 📈 **Excel 네이티브 차트**: openpyxl 기반 인터랙티브 차트
+- 🎨 **커스터마이징**: 크기, 색상, 폰트, 레이아웃 설정
+- 📋 **종합 리포트**: 한 번의 호출로 모든 차트 자동 생성
+
+```python
+from excel_chart_integration import ExcelReportGenerator
+
+# 리포트 생성기 초기화
+generator = ExcelReportGenerator()
+
+# 종합 Excel 리포트 생성 (모든 차트 포함)
+generator.generate_comprehensive_report(
+    excel_path="analysis.xlsx",
+    trend_df=trend_data,
+    growth_df=growth_data,
+    keyword_freq=keyword_freq,
+    network_graph=network,
+    word_freq=word_freq
+)
+```
+
+### 🆕 키워드 트렌드 분석 시스템
+
+- 🇰🇷 **한국어 형태소 분석**: KoNLPy 기반 형태소 분석 (Okt, Mecab, Komoran 등)
+- 📈 **키워드 트렌드 분석**: 일별/주별/월별 키워드 빈도 추이 분석
+- 🌐 **연관 키워드 네트워크**: 동시 출현 기반 키워드 네트워크 분석
+- 🎯 **키워드 클러스터링**: K-means 기반 키워드 군집화
+- 📊 **인터랙티브 시각화**: Plotly 기반 인터랙티브 차트 및 네트워크 그래프
+- ☁️ **워드클라우드**: 키워드 빈도 기반 워드클라우드 생성
+
+**Excel 리포트 및 알림 통합:**
+```python
+from keyword_trend_analyzer import KeywordTrendSystem
+
+system = KeywordTrendSystem()
+results = system.analyze_from_logs('logs')
+
+# Excel 리포트 생성 (차트 포함)
+excel_path = system.generate_excel_report(results, include_charts=True)
+
+# 급상승 키워드 알림
+alert_result = system.monitor_and_alert_trending(results, recipients=["user@example.com"])
+```
+
+```python
+from keyword_trend_analyzer import KeywordTrendSystem
+
+# 시스템 초기화
+system = KeywordTrendSystem(analyzer_type='okt')
+
+# 로그 파일 분석
+results = system.analyze_from_logs('logs')
+
+# 결과 요약 출력
+system.print_summary(results)
+
+# 리포트 생성 (트렌드 차트, 네트워크, 워드클라우드)
+report_files = system.generate_report(results)
+```
+
+**상세 가이드:** [KEYWORD_ANALYSIS_GUIDE.md](KEYWORD_ANALYSIS_GUIDE.md)
+
 ### 🆕 이메일 알림 시스템
 
 - 📧 **Gmail SMTP 연동**: 안전하고 신뢰할 수 있는 Gmail SMTP 서버 사용
@@ -189,6 +305,12 @@ diskcache>=5.6.0         # 디스크 캐싱
 matplotlib>=3.7.0        # 데이터 시각화
 plotly>=5.14.0           # 인터랙티브 차트
 kaleido>=0.2.1           # 정적 이미지 변환
+konlpy>=0.6.0            # 한국어 형태소 분석
+networkx>=3.1            # 네트워크 분석
+wordcloud>=1.9.0         # 워드클라우드 생성
+scikit-learn>=1.3.0      # 머신러닝 (클러스터링)
+numpy>=1.24.0            # 수치 연산
+apscheduler>=3.10.0      # 스케줄링 (RSS 피드 자동 업데이트)
 smtplib (내장)           # 이메일 전송 (Python 내장)
 ```
 
@@ -416,6 +538,97 @@ crawler.close()
 - `send_error_report`: 오류 발생 시 알림 전송
 - `send_email`: 사용자 정의 이메일 전송
 
+#### RSS 피드 자동 생성
+
+```python
+from web_crawler import WebCrawler
+from rss_feed_generator import create_feed_from_crawler_data
+from feed_scheduler import FeedManager
+
+# 1. 기본 RSS 피드 생성
+crawler = WebCrawler(use_cache=True)
+data = crawler.search_google_news("인공지능", max_results=20)
+
+# RSS 피드 생성
+feed_path = create_feed_from_crawler_data("AI", data)
+print(f"RSS 피드 생성: {feed_path}")
+
+# 2. 커스텀 RSS 피드 설정
+from rss_feed_generator import RSSFeedGenerator, RSSFeedConfig, WebCrawlerToRSSConverter
+
+config = RSSFeedConfig(
+    title="내 블로그 - AI 뉴스",
+    description="최신 AI 기술 뉴스를 제공합니다",
+    link="https://myblog.com/ai",
+    language="ko"
+)
+
+converter = WebCrawlerToRSSConverter()
+rss_items = converter.convert_to_rss_items(data)
+
+generator = RSSFeedGenerator(config)
+generator.save_feed(rss_items, "rss_feeds/ai_custom.xml")
+
+# 3. 멀티피드 생성 (여러 키워드)
+from rss_feed_generator import MultiFeedGenerator
+
+keywords = ["AI", "블록체인", "메타버스"]
+data_by_keyword = {k: crawler.search_google_news(k, max_results=10) for k in keywords}
+
+base_config = RSSFeedConfig(
+    title="테크 뉴스 허브",
+    description="최신 기술 뉴스",
+    link="https://technews.com"
+)
+
+multi_gen = MultiFeedGenerator(base_config)
+
+# 개별 피드 생성
+feed_paths = multi_gen.generate_feeds(data_by_keyword, output_dir="rss_feeds/tech")
+
+# 통합 피드 생성
+multi_gen.generate_combined_feed(data_by_keyword, "rss_feeds/tech/combined.xml")
+
+# 4. 자동 스케줄링 (매 30분마다 업데이트)
+manager = FeedManager()
+
+# 간격 기반 스케줄링
+scheduler = manager.create_scheduler(
+    keywords=["AI", "블록체인"],
+    schedule_type='interval',
+    interval_minutes=30  # 30분마다
+)
+
+# 크론 기반 스케줄링 (매일 9시)
+scheduler = manager.create_scheduler(
+    keywords=["AI"],
+    schedule_type='cron',
+    cron_hour=9,
+    cron_minute=0
+)
+
+# 스케줄러 시작 (백그라운드에서 실행)
+scheduler.start(run_immediately=True)
+
+# 설정 저장
+scheduler.save_config("my_scheduler_config.json")
+
+# 설정 로드
+from feed_scheduler import RSSFeedScheduler
+loaded_scheduler = RSSFeedScheduler.load_config("my_scheduler_config.json")
+```
+
+**스케줄링 옵션:**
+- `schedule_type='interval'`: 간격 기반 (매 N분/시간)
+- `schedule_type='cron'`: 크론 기반 (매일 특정 시간)
+- `run_immediately=True`: 시작 즉시 실행 후 스케줄링
+- `use_background=True`: 백그라운드 스케줄러 사용
+
+```bash
+# RSS 피드 예시 실행
+python rss_feed_example.py
+```
+
 ```bash
 # 이메일 예시 실행
 python email_example.py
@@ -440,22 +653,36 @@ python example_usage.py
 9. 프록시 설정
 10. 데이터 시각화
 
+**키워드 분석 예시:**
+```bash
+python test_keyword_analyzer.py
+```
+
 ## 📁 프로젝트 구조
 
 ```
 .
 ├── web_crawler.py          # 메인 크롤러 모듈
-├── email_notifier.py       # 이메일 알림 시스템 (신규)
+├── email_notifier.py       # 이메일 알림 시스템
+├── keyword_trend_analyzer.py  # 키워드 트렌드 분석 시스템 (신규)
+├── rss_feed_generator.py   # RSS 피드 생성 모듈 (신규)
+├── feed_scheduler.py       # RSS 피드 스케줄러 (신규)
 ├── example_usage.py        # 사용 예시 스크립트
-├── email_example.py        # 이메일 알림 예시 스크립트 (신규)
+├── email_example.py        # 이메일 알림 예시 스크립트
+├── rss_feed_example.py     # RSS 피드 예시 스크립트 (신규)
+├── test_keyword_analyzer.py  # 키워드 분석 테스트 스크립트 (신규)
 ├── requirements.txt        # 의존성 패키지
 ├── README.md              # 이 파일
-├── EMAIL_GUIDE.md         # 이메일 알림 시스템 가이드 (신규)
+├── EMAIL_GUIDE.md         # 이메일 알림 시스템 가이드
+├── KEYWORD_ANALYSIS_GUIDE.md  # 키워드 분석 가이드 (신규)
 ├── .cache/                # 캐시 디렉토리 (자동 생성)
 ├── logs/                  # 로그 디렉토리 (자동 생성)
 ├── charts/                # 차트 저장 디렉토리 (자동 생성)
 ├── dashboard/             # 대시보드 저장 디렉토리 (자동 생성)
+├── rss_feeds/             # RSS 피드 저장 디렉토리 (자동 생성, 신규)
+├── email_templates/       # 이메일 템플릿 디렉토리 (자동 생성)
 ├── email_config.json      # 이메일 설정 파일 (자동 생성)
+├── scheduler_config.json  # 스케줄러 설정 파일 (자동 생성, 신규)
 └── proxies.txt            # 프록시 리스트 (선택사항)
 ```
 
@@ -556,6 +783,21 @@ crawler.close()
 ```
 
 ## 🐛 문제 해결
+
+### 키워드 분석 시스템 관련
+
+1. **KoNLPy 설치 오류**
+   - Java JDK 8 이상 설치 확인
+   - JAVA_HOME 환경변수 설정
+   - `pip install konlpy` 재실행
+
+2. **Mecab 형태소 분석기 오류**
+   - Windows: `pip install eunjeon`
+   - macOS/Linux: `bash <(curl -s https://raw.githubusercontent.com/konlpy/konlpy/master/scripts/mecab.sh)`
+
+3. **한글 폰트 오류**
+   - 워드클라우드 생성 시 한글 폰트 필요
+   - AnalyzerConfig에서 FONT_PATH 설정
 
 ### 일반적인 문제
 
