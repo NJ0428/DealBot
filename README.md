@@ -4,14 +4,17 @@
 
 ## ✨ 주요 기능
 
-### 🆕 RSS 피드 자동 생성
+### 🆕 RSS 피드 구독 및 필터링 시스템
 
 - 📡 **RSS 2.0 지원**: 표준 RSS 2.0 형식으로 피드 생성
-- 🔄 **자동 업데이트**: APScheduler 기반 정기적 자동 크롤링 및 피드 업데이트
-- ⏰ **유연한 스케줄링**: 간격 기반(매 N분/시간) 및 크론 기반(매일 특정 시간) 스케줄링
-- 📊 **멀티피드 지원**: 여러 키워드에 대한 개별 피드 및 통합 피드 생성
-- 🎯 **커스터마이징**: 피드 제목, 설명, 카테고리 등 완전한 커스터마이징
-- 💾 **설정 저장/로드**: 스케줄 설정을 JSON 파일로 저장 및 로드
+- 🔍 **중복 필터링**: 이전 수집 데이터와 비교하여 새로운 게시물만 필터링
+- 📊 **데이터베이스 관리**: SQLite 기반 영구 저장소로 수집 내역 관리
+- 🔄 **실시간 구독**: 외부 RSS 피드 구독 및 실시간 업데이트 감시
+- 🔔 **스마트 알림**: 새로운 게시물 발생 시 다양한 채널로 알림 전송
+- ⏰ **자동 업데이트**: APScheduler 기반 정기적 자동 크롤링 및 피드 업데이트
+- 📈 **통계 추적**: 필터링, 구독, 알림 통계 자동 추적
+- 🎯 **커스터마이징**: 피드 제목, 설명, 알림 조건 등 완전한 커스터마이징
+- 💾 **설정 저장/로드**: 구독 설정을 JSON 파일로 저장 및 로드
 
 ```python
 from rss_feed_generator import create_feed_from_crawler_data
@@ -28,6 +31,52 @@ manager.quick_start(
     interval_minutes=30,
     run_immediately=True
 )
+```
+
+**새로운 필터링, 구독, 알림 기능:**
+```python
+from feed_filter import FeedFilter
+from feed_subscriber import FeedSubscriber, SubscriptionConfig
+from change_notifier import ChangeNotifier, NotificationConfig, NotificationChannel
+
+# 1. 필터링 시스템 (이전 수집 데이터와 비교)
+feed_filter = FeedFilter(db_path="feed_cache.db")
+new_items, stats = feed_filter.filter_new_items_from_dict(crawled_data, "AI")
+print(f"새로운 아이템: {len(new_items)}개, 중복: {stats.duplicate_items}개")
+
+# 2. 구독 시스템 (실시간 RSS 피드 구독)
+subscriber = FeedSubscriber(feed_filter=feed_filter)
+
+config = SubscriptionConfig(
+    url="https://news.google.com/rss/search?q=AI&hl=ko&gl=KR",
+    name="Google News AI",
+    keyword="AI",
+    update_interval=300  # 5분마다
+)
+subscriber.add_subscription(config)
+
+# 새로운 아이템 도착 시 콜백
+def on_new_items(items, subscription):
+    print(f"{subscription}: {len(items)}개 새로운 아이템")
+
+subscriber.add_callback(on_new_items)
+
+# 3. 알림 시스템 (새로운 게시물 알림)
+notification_config = NotificationConfig(
+    enabled=True,
+    channels=[NotificationChannel.EMAIL, NotificationChannel.SLACK],
+    min_items_for_notification=1
+)
+notifier = ChangeNotifier(notification_config)
+
+# 자동 알림 전송
+notifier.notify_items(new_items, "Google News AI", "AI")
+
+# 4. 실시간 모니터링 (자동 업데이트 + 알림)
+from feed_subscriber import FeedMonitor
+
+monitor = FeedMonitor(subscriber, check_interval=60)
+monitor.start()  # 1분마다 자동 확인
 ```
 
 ### 🆕 인기 급상승 키워드 탐지 및 알림
@@ -311,6 +360,9 @@ wordcloud>=1.9.0         # 워드클라우드 생성
 scikit-learn>=1.3.0      # 머신러닝 (클러스터링)
 numpy>=1.24.0            # 수치 연산
 apscheduler>=3.10.0      # 스케줄링 (RSS 피드 자동 업데이트)
+feedparser>=6.0.10       # RSS 피드 파싱
+jinja2>=3.1.2            # 이메일 템플릿
+certifi>=2023.7.22       # SSL 인증서
 smtplib (내장)           # 이메일 전송 (Python 내장)
 ```
 
@@ -627,6 +679,9 @@ loaded_scheduler = RSSFeedScheduler.load_config("my_scheduler_config.json")
 ```bash
 # RSS 피드 예시 실행
 python rss_feed_example.py
+
+# RSS 통합 예시 실행 (필터링 + 구독 + 알림)
+python rss_integration_example.py
 ```
 
 ```bash
@@ -664,13 +719,17 @@ python test_keyword_analyzer.py
 .
 ├── web_crawler.py          # 메인 크롤러 모듈
 ├── email_notifier.py       # 이메일 알림 시스템
-├── keyword_trend_analyzer.py  # 키워드 트렌드 분석 시스템 (신규)
-├── rss_feed_generator.py   # RSS 피드 생성 모듈 (신규)
-├── feed_scheduler.py       # RSS 피드 스케줄러 (신규)
+├── keyword_trend_analyzer.py  # 키워드 트렌드 분석 시스템
+├── rss_feed_generator.py   # RSS 피드 생성 모듈
+├── feed_scheduler.py       # RSS 피드 스케줄러
+├── feed_filter.py          # RSS 피드 필터링 시스템 (신규)
+├── feed_subscriber.py      # RSS 피드 구독 시스템 (신규)
+├── change_notifier.py      # 변경사항 알림 시스템 (신규)
 ├── example_usage.py        # 사용 예시 스크립트
 ├── email_example.py        # 이메일 알림 예시 스크립트
-├── rss_feed_example.py     # RSS 피드 예시 스크립트 (신규)
-├── test_keyword_analyzer.py  # 키워드 분석 테스트 스크립트 (신규)
+├── rss_feed_example.py     # RSS 피드 예시 스크립트
+├── rss_integration_example.py  # RSS 통합 예시 스크립트 (신규)
+├── test_keyword_analyzer.py  # 키워드 분석 테스트 스크립트
 ├── requirements.txt        # 의존성 패키지
 ├── README.md              # 이 파일
 ├── EMAIL_GUIDE.md         # 이메일 알림 시스템 가이드
@@ -679,10 +738,12 @@ python test_keyword_analyzer.py
 ├── logs/                  # 로그 디렉토리 (자동 생성)
 ├── charts/                # 차트 저장 디렉토리 (자동 생성)
 ├── dashboard/             # 대시보드 저장 디렉토리 (자동 생성)
-├── rss_feeds/             # RSS 피드 저장 디렉토리 (자동 생성, 신규)
+├── rss_feeds/             # RSS 피드 저장 디렉토리 (자동 생성)
 ├── email_templates/       # 이메일 템플릿 디렉토리 (자동 생성)
 ├── email_config.json      # 이메일 설정 파일 (자동 생성)
-├── scheduler_config.json  # 스케줄러 설정 파일 (자동 생성, 신규)
+├── scheduler_config.json  # 스케줄러 설정 파일 (자동 생성)
+├── subscriptions.json     # 구독 설정 파일 (자동 생성, 신규)
+├── feed_cache.db          # 피드 필터링 데이터베이스 (자동 생성, 신규)
 └── proxies.txt            # 프록시 리스트 (선택사항)
 ```
 
