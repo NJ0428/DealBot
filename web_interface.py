@@ -16,6 +16,9 @@ import pandas as pd
 # 기존 크롤러 임포트
 from web_crawler import WebCrawler, Config, setup_logging
 
+# 감정 분석 임포트
+from sentiment_analyzer import SentimentAnalyzer, SentimentFilter
+
 # Flask 앱 설정
 app = Flask(__name__)
 app.secret_key = 'dealbot-secret-key-change-in-production'
@@ -31,8 +34,9 @@ logger = setup_logging()
 for folder in [app.config['UPLOAD_FOLDER'], app.config['RESULTS_FOLDER'], app.config['DOWNLOAD_FOLDER']]:
     Path(folder).mkdir(exist_ok=True)
 
-# 크롤러 인스턴스
+# 크롤러 및 감정 분석기 인스턴스
 crawler = WebCrawler()
+sentiment_analyzer = SentimentAnalyzer()
 
 @app.route('/')
 def index():
@@ -47,12 +51,13 @@ def search():
         keyword = request.form.get('keyword', '').strip()
         max_results = int(request.form.get('max_results', Config.DEFAULT_MAX_RESULTS))
         search_type = request.form.get('search_type', 'naver')
+        enable_sentiment = request.form.get('enable_sentiment') == 'true'  # 감정 분석 옵션
 
         if not keyword:
             flash('검색어를 입력해주세요.', 'error')
             return redirect(url_for('index'))
 
-        logger.info(f"검색 요청: keyword={keyword}, max_results={max_results}, type={search_type}")
+        logger.info(f"검색 요청: keyword={keyword}, max_results={max_results}, type={search_type}, sentiment={enable_sentiment}")
 
         # 크롤링 수행
         if search_type == 'naver':
@@ -61,6 +66,16 @@ def search():
             results = crawler.search_google(keyword, max_results=max_results)
         else:
             results = crawler.search_multiple_sources(keyword, max_results=max_results)
+
+        # 감정 분석 (옵션)
+        sentiment_stats = None
+        if enable_sentiment and results:
+            try:
+                results = sentiment_analyzer.analyze_data(results)
+                sentiment_stats = SentimentFilter.get_sentiment_summary(results)
+                logger.info(f"감정 분석 완료: 긍정 {sentiment_stats['positive_count']}, 부정 {sentiment_stats['negative_count']}")
+            except Exception as e:
+                logger.warning(f"감정 분석 실패: {e}")
 
         # 결과 저장
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -78,8 +93,20 @@ def search():
             'failed_count': len([r for r in results if r.get('status') != '성공']),
             'keyword': keyword,
             'timestamp': timestamp,
-            'filename': result_filename
+            'filename': result_filename,
+            'sentiment_enabled': enable_sentiment
         }
+
+        # 감정 통계 추가
+        if sentiment_stats:
+            stats.update({
+                'positive_count': sentiment_stats['positive_count'],
+                'negative_count': sentiment_stats['negative_count'],
+                'neutral_count': sentiment_stats['neutral_count'],
+                'positive_ratio': sentiment_stats['positive_ratio'],
+                'negative_ratio': sentiment_stats['negative_ratio'],
+                'avg_sentiment_score': sentiment_stats['avg_sentiment_score']
+            })
 
         logger.info(f"검색 완료: {stats['total_count']}개 결과, 파일={result_filename}")
 
@@ -202,6 +229,86 @@ def health_check():
         'timestamp': datetime.now().isoformat(),
         'service': 'DealBot Web Interface'
     })
+
+@app.route('/api/analyze_sentiment', methods=['POST'])
+def api_analyze_sentiment():
+    """텍스트 감정 분석 API"""
+    try:
+        data = request.get_json()
+        text = data.get('text', '').strip()
+
+        if not text:
+            return jsonify({'error': '텍스트를 입력해주세요.'}), 400
+
+        # 감정 분석
+        result = sentiment_analyzer.analyze(text)
+
+        return jsonify({
+            'success': True,
+            'result': {
+                'label': result.label,
+                'sentiment_score': result.sentiment_score,
+                'positive_score': result.positive_score,
+                'negative_score': result.negative_score,
+                'confidence': result.confidence,
+                'positive_words': result.positive_words[:10],
+                'negative_words': result.negative_words[:10],
+                'word_count': result.word_count
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"감정 분석 API 오류: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/filter_sentiment', methods=['POST'])
+def api_filter_sentiment():
+    """감정 필터링 API"""
+    try:
+        data = request.get_json()
+        sentiment_type = data.get('sentiment', 'positive')  # 'positive', 'negative', 'neutral'
+        min_score = float(data.get('min_score', 0.0))
+        results = data.get('results', [])
+
+        if not results:
+            return jsonify({'error': '결과 데이터가 없습니다.'}), 400
+
+        # 감정 필터링
+        filtered = SentimentFilter.filter_by_sentiment(results, sentiment_type, min_score)
+
+        return jsonify({
+            'success': True,
+            'count': len(filtered),
+            'results': filtered
+        })
+
+    except Exception as e:
+        logger.error(f"감정 필터링 API 오류: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sentiment_stats', methods=['POST'])
+def api_sentiment_stats():
+    """감정 통계 API"""
+    try:
+        data = request.get_json()
+        results = data.get('results', [])
+
+        if not results:
+            return jsonify({'error': '결과 데이터가 없습니다.'}), 400
+
+        # 통계 계산
+        summary = SentimentFilter.get_sentiment_summary(results)
+        distribution = SentimentFilter.get_sentiment_distribution(results)
+
+        return jsonify({
+            'success': True,
+            'summary': summary,
+            'distribution': distribution
+        })
+
+    except Exception as e:
+        logger.error(f"감정 통계 API 오류: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 def create_templates():
     """HTML 템플릿 생성"""
