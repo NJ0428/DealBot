@@ -22,6 +22,9 @@ dashboard/
 email_config.json
 email_auth.json
 
+# API 키 (중요: 보안)
+api_keys.json
+
 # Python
 __pycache__/
 *.py[cod]
