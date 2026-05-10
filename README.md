@@ -194,6 +194,65 @@ notifier.send_crawling_report(
 )
 ```
 
+### 🆕 머신러닝 기반 감정 분석 시스템
+
+- 🤖 **한국어 감정 분석**: KoNLPy 기반 형태소 분석 및 감정 사전 기반 분류
+- 📊 **다차원 감정 점수**: 긍정/부정/중립 라벨 + 신뢰도 + 상세 점수 (-1.0 ~ 1.0)
+- 🔍 **스마트 필터링**: 감정 라벨, 점수 기반 필터링 및 정렬
+- 📈 **감정 통계 분석**: 감정 분포, 평균 점수, 비율 등 종합 통계 제공
+- ⚙️ **커스터마이징**: 감정 사전, 임계값, 가중치 등 완전한 설정 가능
+- 🚀 **대량 데이터 처리**: 일괄 분석 기능으로 대량 텍스트 효율적 처리
+
+```python
+from sentiment_analyzer import SentimentAnalyzer, SentimentFilter, SentimentConfig
+
+# 기본 감정 분석
+analyzer = SentimentAnalyzer()
+result = analyzer.analyze("이 제품은 정말 좋습니다. 강력 추천합니다!")
+print(f"감정: {result.label}, 점수: {result.sentiment_score:.3f}")
+
+# 크롤링 데이터에 감정 분석 적용
+from web_crawler import WebCrawler
+
+crawler = WebCrawler()
+data = crawler.search_google_news("AI", max_results=20)
+
+# 자동 감정 분석 (제목+내용)
+data = analyzer.analyze_data(data)
+
+# 결과 확인
+for item in data[:5]:
+    print(f"{item['title']}: {item['sentiment_label']} ({item['sentiment_score']:.3f})")
+
+# 감정 기반 필터링
+positive_news = SentimentFilter.filter_by_sentiment(data, 'positive', min_score=0.3)
+negative_news = SentimentFilter.filter_by_sentiment(data, 'negative', min_score=0.3)
+
+# 감정 점수 기반 정렬
+sorted_news = SentimentFilter.sort_by_sentiment(data, 'positive', reverse=True)
+
+# 통계 요약
+summary = SentimentFilter.get_sentiment_summary(data)
+print(f"긍정: {summary['positive_ratio']:.1%}, 부정: {summary['negative_ratio']:.1%}")
+```
+
+**커스텀 설정 예시:**
+```python
+# 커스텀 감정 분석 설정
+config = SentimentConfig(
+    tokenizer_type='okt',          # 형태소 분석기 타입
+    positive_threshold=0.2,        # 긍정 임계값
+    negative_threshold=-0.2,       # 부정 임계값
+    intensifier_weight=2.0,        # 강조어 가중치
+    negation_weight=-1.5,          # 부정어 가중치
+    custom_dict_path='my_dict.json'  # 커스텀 감정 사전
+)
+
+analyzer = SentimentAnalyzer(config)
+```
+
+**상세 가이드:** [SENTIMENT_ANALYSIS_GUIDE.md](SENTIMENT_ANALYSIS_GUIDE.md)
+
 ### 🆕 데이터 시각화 기능
 
 - 📊 **matplotlib/plotly 기반 시각화**: 인터랙티브 차트 자동 생성
@@ -239,6 +298,54 @@ http://localhost:5000
 ```
 
 **상세 가이드:** [WEB_INTERFACE_GUIDE.md](WEB_INTERFACE_GUIDE.md)
+
+### 🔌 REST API 서버
+
+- 🔐 **API 키 인증 시스템**: 안전한 API 키 기반 인증
+- 📊 **Rate Limiting**: API 키당 요청 한계 설정
+- 🎯 **권한 관리**: read, write, admin 권한 지원
+- 📈 **사용량 추적**: API 키별 사용 통계 제공
+- 🔄 **RESTful API**: 표준 REST API 엔드포인트 제공
+- 🚀 **비동기 처리**: 병렬 크롤링 지원
+
+```bash
+# REST API 서버 시작
+python api_server.py
+
+# API 접속
+http://localhost:5000/api/v1/health
+```
+
+**API 사용 예시:**
+```python
+import requests
+
+# API 인증
+headers = {
+    'X-API-Key-ID': 'your_key_id',
+    'X-API-Key-Secret': 'your_key_secret',
+    'Content-Type': 'application/json'
+}
+
+# 뉴스 크롤링
+data = {
+    'keyword': '인공지능',
+    'max_results': 20,
+    'search_type': 'naver',
+    'enable_sentiment': True
+}
+
+response = requests.post(
+    'http://localhost:5000/api/v1/crawl/news',
+    headers=headers,
+    json=data
+)
+
+result = response.json()
+print(f"검색 결과: {result['count']}개")
+```
+
+**상세 가이드:** [API_GUIDE.md](API_GUIDE.md)
 
 ### 기본 기능
 
@@ -748,6 +855,45 @@ python web_interface_example.py
 - 📋 검색 이력 관리
 - 🎨 반응형 디자인
 
+### 5. REST API 서버 실행 (신규)
+
+**시작 방법 1: 직접 실행**
+```bash
+python api_server.py
+```
+
+**시작 방법 2: 시작 스크립트 사용**
+```bash
+# Linux/Mac
+chmod +x start_api.sh
+./start_api.sh
+
+# Windows
+start_api.bat
+```
+
+**API 접속:**
+```bash
+# 헬스체크
+curl http://localhost:5000/api/v1/health
+
+# API 키 확인 (최초 실행 시 생성됨)
+```
+
+**API 사용 예시:**
+```bash
+# API 클라이언트 예시 실행
+python api_example.py
+```
+
+**REST API 기능:**
+- 🔐 API 키 인증 시스템
+- 📊 Rate Limiting
+- 🎯 권한 관리 (read, write, admin)
+- 🕷️ 뉴스 크롤링 API
+- 🎭 감정 분석 API
+- 📈 사용량 추적
+
 ### 3. 예시 실행
 
 ```bash
@@ -772,40 +918,63 @@ python example_usage.py
 python test_keyword_analyzer.py
 ```
 
+**감정 분석 예시:**
+```bash
+# 감정 분석 테스트 실행
+python sentiment_analyzer.py
+
+# 감정 분석 예시 실행
+python sentiment_example.py
+
+# 감정 분석 테스트 실행
+python test_sentiment_analyzer.py
+```
+
 ## 📁 프로젝트 구조
 
 ```
 .
-├── web_crawler.py          # 메인 크롤러 모듈
-├── web_interface.py        # 웹 인터페이스 (신규)
-├── email_notifier.py       # 이메일 알림 시스템
-├── keyword_trend_analyzer.py  # 키워드 트렌드 분석 시스템
-├── rss_feed_generator.py   # RSS 피드 생성 모듈
-├── feed_scheduler.py       # RSS 피드 스케줄러
-├── feed_filter.py          # RSS 피드 필터링 시스템 (신규)
-├── feed_subscriber.py      # RSS 피드 구독 시스템 (신규)
-├── change_notifier.py      # 변경사항 알림 시스템 (신규)
-├── example_usage.py        # 사용 예시 스크립트
-├── web_interface_example.py # 웹 인터페이스 예시 (신규)
-├── email_example.py        # 이메일 알림 예시 스크립트
-├── rss_feed_example.py     # RSS 피드 예시 스크립트
-├── rss_integration_example.py  # RSS 통합 예시 스크립트 (신규)
+├── web_crawler.py            # 메인 크롤러 모듈
+├── web_interface.py          # 웹 인터페이스
+├── api_server.py             # REST API 서버 (신규)
+├── api_auth.py               # API 키 인증 시스템 (신규)
+├── api_example.py            # API 사용 예시 (신규)
+├── email_notifier.py         # 이메일 알림 시스템
+├── keyword_trend_analyzer.py # 키워드 트렌드 분석 시스템
+├── sentiment_analyzer.py     # 감정 분석 시스템 (신규)
+├── rss_feed_generator.py     # RSS 피드 생성 모듈
+├── feed_scheduler.py         # RSS 피드 스케줄러
+├── feed_filter.py            # RSS 피드 필터링 시스템 (신규)
+├── feed_subscriber.py        # RSS 피드 구독 시스템 (신규)
+├── change_notifier.py        # 변경사항 알림 시스템 (신규)
+├── example_usage.py          # 사용 예시 스크립트
+├── sentiment_example.py      # 감정 분석 예시
+├── web_interface_example.py  # 웹 인터페이스 예시
+├── api_example.py            # REST API 사용 예시 (신규)
+├── email_example.py          # 이메일 알림 예시 스크립트
+├── test_sentiment_analyzer.py # 감정 분석 테스트
+├── rss_feed_example.py       # RSS 피드 예시 스크립트
+├── rss_integration_example.py # RSS 통합 예시 스크립트
 ├── test_keyword_analyzer.py  # 키워드 분석 테스트 스크립트
-├── requirements.txt        # 의존성 패키지
-├── README.md              # 이 파일
-├── EMAIL_GUIDE.md         # 이메일 알림 시스템 가이드
-├── KEYWORD_ANALYSIS_GUIDE.md  # 키워드 분석 가이드 (신규)
-├── .cache/                # 캐시 디렉토리 (자동 생성)
-├── logs/                  # 로그 디렉토리 (자동 생성)
-├── charts/                # 차트 저장 디렉토리 (자동 생성)
-├── dashboard/             # 대시보드 저장 디렉토리 (자동 생성)
-├── rss_feeds/             # RSS 피드 저장 디렉토리 (자동 생성)
-├── email_templates/       # 이메일 템플릿 디렉토리 (자동 생성)
-├── email_config.json      # 이메일 설정 파일 (자동 생성)
-├── scheduler_config.json  # 스케줄러 설정 파일 (자동 생성)
-├── subscriptions.json     # 구독 설정 파일 (자동 생성, 신규)
-├── feed_cache.db          # 피드 필터링 데이터베이스 (자동 생성, 신규)
-└── proxies.txt            # 프록시 리스트 (선택사항)
+├── requirements.txt          # 의존성 패키지
+├── README.md                 # 이 파일
+├── EMAIL_GUIDE.md            # 이메일 알림 시스템 가이드
+├── KEYWORD_ANALYSIS_GUIDE.md # 키워드 분석 가이드
+├── SENTIMENT_ANALYSIS_GUIDE.md # 감정 분석 가이드
+├── API_GUIDE.md              # REST API 가이드 (신규)
+├── WEB_INTERFACE_GUIDE.md    # 웹 인터페이스 가이드
+├── .cache/                   # 캐시 디렉토리 (자동 생성)
+├── logs/                     # 로그 디렉토리 (자동 생성)
+├── charts/                   # 차트 저장 디렉토리 (자동 생성)
+├── dashboard/                # 대시보드 저장 디렉토리 (자동 생성)
+├── rss_feeds/                # RSS 피드 저장 디렉토리 (자동 생성)
+├── email_templates/          # 이메일 템플릿 디렉토리 (자동 생성)
+├── email_config.json         # 이메일 설정 파일 (자동 생성)
+├── scheduler_config.json     # 스케줄러 설정 파일 (자동 생성)
+├── subscriptions.json        # 구독 설정 파일 (자동 생성)
+├── feed_cache.db             # 피드 필터링 데이터베이스 (자동 생성)
+├── api_keys.json             # API 키 저장 파일 (자동 생성, 신규)
+└── proxies.txt               # 프록시 리스트 (선택사항)
 ```
 
 ## ⚙️ 설정
