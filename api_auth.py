@@ -9,12 +9,16 @@ import secrets
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, TYPE_CHECKING
 from pathlib import Path
 import threading
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
+
+# 타입 힌트를 위한 임포트 (실제 사용 시 import 주의)
+if TYPE_CHECKING:
+    from api_rate_limiter import RateLimitPolicy
 
 class APIKey:
     """API 키 클래스"""
@@ -23,17 +27,20 @@ class APIKey:
                  created_at: str, expires_at: Optional[str] = None,
                  is_active: bool = True, rate_limit: int = 1000,
                  usage_count: int = 0, last_used: Optional[str] = None,
-                 permissions: List[str] = None):
+                 permissions: List[str] = None, tier: str = 'basic',
+                 rate_limit_policy: Optional[Dict] = None):
         self.key_id = key_id
         self.key_secret = key_secret
         self.name = name
         self.created_at = created_at
         self.expires_at = expires_at
         self.is_active = is_active
-        self.rate_limit = rate_limit
-        self.usage_count = usage_count
+        self.rate_limit = rate_limit  # 호환성 유지 (레거시)
+        self.usage_count = usage_count  # 호환성 유지 (레거시)
         self.last_used = last_used
         self.permissions = permissions or ['read', 'write']
+        self.tier = tier  # 티어 정보 (free, basic, pro, enterprise)
+        self.rate_limit_policy = rate_limit_policy or {}  # Rate Limiting 정책
 
     def to_dict(self) -> dict:
         """딕셔너리로 변환"""
@@ -47,7 +54,9 @@ class APIKey:
             'rate_limit': self.rate_limit,
             'usage_count': self.usage_count,
             'last_used': self.last_used,
-            'permissions': self.permissions
+            'permissions': self.permissions,
+            'tier': self.tier,
+            'rate_limit_policy': self.rate_limit_policy
         }
 
     @classmethod
@@ -63,7 +72,9 @@ class APIKey:
             rate_limit=data.get('rate_limit', 1000),
             usage_count=data.get('usage_count', 0),
             last_used=data.get('last_used'),
-            permissions=data.get('permissions', ['read', 'write'])
+            permissions=data.get('permissions', ['read', 'write']),
+            tier=data.get('tier', 'basic'),
+            rate_limit_policy=data.get('rate_limit_policy', {})
         )
 
     def is_expired(self) -> bool:
@@ -77,7 +88,9 @@ class APIKey:
             return False
 
     def is_rate_limited(self) -> bool:
-        """Rate limit 초과 여부 확인"""
+        """Rate limit 초과 여부 확인 (레거시 호환성)"""
+        # 새로운 Rate Limiting 시스템 사용 권장
+        # 이 메서드는 레거시 호환성을 위해 유지
         return self.usage_count >= self.rate_limit
 
     def increment_usage(self):

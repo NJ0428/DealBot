@@ -4,7 +4,7 @@ REST API 서버
 DealBot 기능을 REST API로 제공
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 from functools import wraps
 import logging
 from datetime import datetime
@@ -16,10 +16,216 @@ from web_crawler import WebCrawler, Config, setup_logging
 from sentiment_analyzer import SentimentAnalyzer, SentimentFilter
 from api_auth import APIKeyManager, APIKeyAuthMiddleware, get_api_key_manager, create_default_api_key
 
+# 고급 Rate Limiting 임포트
+try:
+    from api_rate_limiter import (
+        get_rate_limiter, RateLimitMiddleware,
+        RateLimitPolicy, get_policy_for_tier
+    )
+    RATE_LIMITING_AVAILABLE = True
+except ImportError:
+    RATE_LIMITING_AVAILABLE = False
+    logging.warning("고급 Rate Limiting 모듈을 찾을 수 없음. 기본 제한만 사용됩니다.")
+
+# Swagger 문서화 임포트
+try:
+    from flasgger import Swagger
+    SWAGGER_AVAILABLE = True
+except ImportError:
+    SWAGGER_AVAILABLE = False
+    logging.warning("Flasgger를 찾을 수 없음. API 문서가 제공되지 않습니다.")
+
 # Flask 앱 설정
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+
+# Swagger 설정
+if SWAGGER_AVAILABLE:
+    swagger_config = {
+        "headers": [],
+        "specs": [
+            {
+                "endpoint": 'apispec',
+                "route": '/apispec.json',
+                "rule_filter": lambda rule: True,
+                "model_filter": lambda tag: True,
+            }
+        ],
+        "static_url_path": "/flasgger_static",
+        "swagger_ui": True,
+        "specs_route": "/api/v1/docs/"
+    }
+
+    swagger_template = {
+        "swagger": "2.0",
+        "info": {
+            "title": "DealBot REST API",
+            "description": "웹 크롤링, 감정 분석, 데이터 수집 API",
+            "contact": {
+                "name": "DealBot Support",
+                "email": "support@dealbot.com"
+            },
+            "version": "1.0.0"
+        },
+        "host": "localhost:5000",
+        "basePath": "/api/v1",
+        "schemes": [
+            "http",
+            "https"
+        ],
+        "securityDefinitions": {
+            "ApiKeyAuth": {
+                "type": "apiKey",
+                "in": "header",
+                "name": "X-API-Key-ID",
+                "description": "API Key ID 헤더. X-API-Key-Secret 헤더도 함께 필요합니다."
+            }
+        },
+        "security": [
+            {
+                "ApiKeyAuth": []
+            }
+        ],
+        "definitions": {
+            "APIKey": {
+                "type": "object",
+                "properties": {
+                    "key_id": {
+                        "type": "string",
+                        "example": "dk_abc123..."
+                    },
+                    "key_secret": {
+                        "type": "string",
+                        "example": "sk_secret..."
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "My API Key"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "expires_at": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "is_active": {
+                        "type": "boolean"
+                    },
+                    "rate_limit": {
+                        "type": "integer",
+                        "example": 1000
+                    },
+                    "usage_count": {
+                        "type": "integer",
+                        "example": 150
+                    },
+                    "last_used": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "permissions": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "example": ["read", "write"]
+                    },
+                    "tier": {
+                        "type": "string",
+                        "enum": ["free", "basic", "pro", "enterprise"],
+                        "example": "basic"
+                    }
+                }
+            },
+            "CrawlingResult": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string"
+                    },
+                    "url": {
+                        "type": "string"
+                    },
+                    "blog_name": {
+                        "type": "string"
+                    },
+                    "date": {
+                        "type": "string"
+                    },
+                    "summary": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "sentiment_label": {
+                        "type": "string",
+                        "enum": ["positive", "negative", "neutral"]
+                    },
+                    "sentiment_score": {
+                        "type": "number",
+                        "format": "float"
+                    }
+                }
+            },
+            "SentimentResult": {
+                "type": "object",
+                "properties": {
+                    "label": {
+                        "type": "string",
+                        "enum": ["positive", "negative", "neutral"]
+                    },
+                    "sentiment_score": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "positive_score": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "negative_score": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "format": "float"
+                    },
+                    "positive_words": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "negative_words": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "word_count": {
+                        "type": "integer"
+                    }
+                }
+            },
+            "ErrorResponse": {
+                "type": "object",
+                "properties": {
+                    "error": {
+                        "type": "string"
+                    },
+                    "message": {
+                        "type": "string"
+                    }
+                }
+            }
+        }
+    }
+
+    swagger = Swagger(app, config=swagger_config, template=swagger_template)
 
 # 로거 설정
 logger = setup_logging()
@@ -27,6 +233,15 @@ logger = setup_logging()
 # API 키 관리자 및 인증 미들웨어
 api_key_manager = get_api_key_manager()
 auth_middleware = APIKeyAuthMiddleware(api_key_manager)
+
+# Rate Limiting 미들웨어
+if RATE_LIMITING_AVAILABLE:
+    rate_limiter = get_rate_limiter()
+    rate_limit_middleware = RateLimitMiddleware(rate_limiter)
+    logger.info("고급 Rate Limiting 활성화")
+else:
+    rate_limit_middleware = None
+    logger.info("레거시 Rate Limiting 사용")
 
 # 크롤러 및 감정 분석기 인스턴스
 crawler = WebCrawler()
@@ -65,13 +280,41 @@ def require_auth(permission: str = 'read'):
                     'message': f'Permission "{permission}" required'
                 }), 403
 
-            # Rate limiting 확인
-            if api_key.is_rate_limited():
-                logger.warning(f"Rate limit 초과: {key_id}")
-                return jsonify({
-                    'error': 'Rate limit exceeded',
-                    'message': f'Rate limit of {api_key.rate_limit} requests exceeded'
-                }), 429
+            # 고급 Rate Limiting 확인
+            if RATE_LIMITING_AVAILABLE and rate_limit_middleware:
+                # API 키의 티어에 따른 정책 가져오기
+                policy = get_policy_for_tier(api_key.tier)
+
+                # 엔드포인트 이름 추출
+                endpoint = f"{request.method} {request.endpoint}"
+
+                # Rate Limiting 체크
+                allowed, result = rate_limit_middleware.check_rate_limit(
+                    key_id=key_id,
+                    endpoint=endpoint,
+                    policy=policy
+                )
+
+                if not allowed:
+                    logger.warning(f"Rate limit 초과: {key_id}")
+                    response = jsonify(result)
+                    response.status_code = 429
+                    response.headers['Retry-After'] = str(result.get('retry_after', 60))
+                    return response
+
+                # 응답 헤더에 Rate Limiting 정보 추가
+                response = make_response()
+                for key, value in result.items():
+                    response.headers[key] = str(value)
+            else:
+                # 레거시 Rate Limiting 확인
+                if api_key.is_rate_limited():
+                    logger.warning(f"Rate limit 초과: {key_id}")
+                    return jsonify({
+                        'error': 'Rate limit exceeded',
+                        'message': f'Rate limit of {api_key.rate_limit} requests exceeded'
+                    }), 429
+                response = None
 
             return f(*args, **kwargs)
 
@@ -98,7 +341,30 @@ def handle_errors(f):
 
 @app.route('/api/v1/health', methods=['GET'])
 def health_check():
-    """헬스체크 엔드포인트"""
+    """
+    헬스체크
+    ---
+    tags:
+      - 시스템
+    responses:
+      200:
+        description: 서버 정상 작동
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              example: healthy
+            timestamp:
+              type: string
+              format: date-time
+            service:
+              type: string
+              example: DealBot REST API
+            version:
+              type: string
+              example: 1.0.0
+    """
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
@@ -110,7 +376,31 @@ def health_check():
 @require_auth('read')
 @handle_errors
 def get_stats():
-    """API 서버 통계"""
+    """
+    API 서버 통계 조회
+    ---
+    tags:
+      - 시스템
+    security:
+      - ApiKeyAuth: []
+    responses:
+      200:
+        description: 서버 통계 정보
+        schema:
+          type: object
+          properties:
+            api_keys_count:
+              type: integer
+            total_requests:
+              type: integer
+            active_keys:
+              type: integer
+            timestamp:
+              type: string
+              format: date-time
+      401:
+        description: 인증 실패
+    """
     api_keys = api_key_manager.list_api_keys()
     total_usage = sum(key['usage_count'] for key in api_keys)
 
@@ -129,7 +419,30 @@ def get_stats():
 @require_auth('admin')
 @handle_errors
 def list_api_keys():
-    """모든 API 키 목록"""
+    """
+    모든 API 키 목록 조회
+    ---
+    tags:
+      - API 키 관리
+    security:
+      - ApiKeyAuth: []
+    responses:
+      200:
+        description: API 키 목록
+        schema:
+          type: object
+          properties:
+            count:
+              type: integer
+            keys:
+              type: array
+              items:
+                $ref: '#/definitions/APIKey'
+      401:
+        description: 인증 실패
+      403:
+        description: 권한 부족 (admin 필요)
+    """
     keys = api_key_manager.list_api_keys()
     return jsonify({
         'count': len(keys),
@@ -140,13 +453,57 @@ def list_api_keys():
 @require_auth('admin')
 @handle_errors
 def create_api_key():
-    """새 API 키 생성"""
+    """
+    새 API 키 생성
+    ---
+    tags:
+      - API 키 관리
+    parameters:
+      - in: body
+        name: body
+        schema:
+          type: object
+          required:
+            - name
+          properties:
+            name:
+              type: string
+              example: My API Key
+            rate_limit:
+              type: integer
+              example: 1000
+            expires_in_days:
+              type: integer
+              example: 365
+            permissions:
+              type: array
+              items:
+                type: string
+              example: ['read', 'write']
+            tier:
+              type: string
+              enum: [free, basic, pro, enterprise]
+              example: basic
+    responses:
+      201:
+        description: API 키 생성 성공
+        schema:
+          type: object
+          properties:
+            message:
+              type: string
+            key:
+              $ref: '#/definitions/APIKey'
+      400:
+        description: 잘못된 요청
+    """
     data = request.get_json()
 
     name = data.get('name', 'Unnamed Key')
     rate_limit = data.get('rate_limit', 1000)
     expires_in_days = data.get('expires_in_days')
     permissions = data.get('permissions', ['read', 'write'])
+    tier = data.get('tier', 'basic')  # 티어 정보 추가
 
     # 입력값 검증
     if not isinstance(name, str) or len(name) == 0:
@@ -161,13 +518,20 @@ def create_api_key():
     if not isinstance(permissions, list) or not all(isinstance(p, str) for p in permissions):
         return jsonify({'error': 'Invalid permissions'}), 400
 
-    # API 키 생성
+    # 티어 검증
+    if tier not in ['free', 'basic', 'pro', 'enterprise']:
+        return jsonify({'error': 'Invalid tier (must be free, basic, pro, or enterprise)'}), 400
+
+    # API 키 생성 (티어 정보 포함)
     api_key = api_key_manager.create_api_key(
         name=name,
         rate_limit=rate_limit,
         expires_in_days=expires_in_days,
         permissions=permissions
     )
+
+    # 티어 정보 설정 (APIKeyManager에서 지원하지 않으면 직접 설정)
+    api_key.tier = tier
 
     return jsonify({
         'message': 'API key created successfully',
@@ -258,7 +622,72 @@ def reset_usage_count(key_id: str):
 @require_auth('write')
 @handle_errors
 def crawl_news():
-    """뉴스 크롤링"""
+    """
+    뉴스 크롤링
+    ---
+    tags:
+      - 크롤링
+    security:
+      - ApiKeyAuth: []
+    parameters:
+      - in: body
+        name: body
+        schema:
+          type: object
+          required:
+            - keyword
+          properties:
+            keyword:
+              type: string
+              example: 인공지능
+            max_results:
+              type: integer
+              minimum: 1
+              maximum: 100
+              default: 20
+              example: 20
+            search_type:
+              type: string
+              enum: [naver, google, multiple]
+              default: naver
+              example: naver
+            enable_sentiment:
+              type: boolean
+              default: false
+              example: true
+    responses:
+      200:
+        description: 크롤링 성공
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+            keyword:
+              type: string
+            search_type:
+              type: string
+            count:
+              type: integer
+            results:
+              type: array
+              items:
+                $ref: '#/definitions/CrawlingResult'
+            timestamp:
+              type: string
+              format: date-time
+            sentiment_stats:
+              type: object
+      400:
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      401:
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      403:
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     data = request.get_json()
 
     keyword = data.get('keyword', '').strip()
@@ -310,7 +739,46 @@ def crawl_news():
 @require_auth('write')
 @handle_errors
 def crawl_multiple():
-    """다중 키워드 크롤링"""
+    """
+    다중 키워드 크롤링
+    ---
+    tags:
+      - 크롤링
+    security:
+      - ApiKeyAuth: []
+    parameters:
+      - in: body
+        name: body
+        schema:
+          type: object
+          required:
+            - keywords
+          properties:
+            keywords:
+              type: array
+              items:
+                type: string
+              minItems: 1
+              maxItems: 10
+              example: [AI, 블록체인, 메타버스]
+            max_results:
+              type: integer
+              minimum: 1
+              maximum: 100
+              default: 20
+            use_async:
+              type: boolean
+              default: true
+    responses:
+      200:
+        description: 다중 크롤링 성공
+      400:
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+      401:
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     data = request.get_json()
 
     keywords = data.get('keywords', [])
@@ -351,7 +819,38 @@ def crawl_multiple():
 @require_auth('read')
 @handle_errors
 def analyze_sentiment():
-    """텍스트 감정 분석"""
+    """
+    단일 텍스트 감정 분석
+    ---
+    tags:
+      - 감정 분석
+    security:
+      - ApiKeyAuth: []
+    parameters:
+      - in: body
+        name: body
+        schema:
+          type: object
+          required:
+            - text
+          properties:
+            text:
+              type: string
+              example: 이 제품은 정말 좋습니다!
+    responses:
+      200:
+        description: 감정 분석 성공
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+            result:
+              $ref: '#/definitions/SentimentResult'
+      400:
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     data = request.get_json()
 
     text = data.get('text', '').strip()
@@ -379,7 +878,35 @@ def analyze_sentiment():
 @require_auth('read')
 @handle_errors
 def analyze_sentiment_batch():
-    """배치 텍스트 감정 분석"""
+    """
+    배치 텍스트 감정 분석
+    ---
+    tags:
+      - 감정 분석
+    security:
+      - ApiKeyAuth: []
+    parameters:
+      - in: body
+        name: body
+        schema:
+          type: object
+          required:
+            - texts
+          properties:
+            texts:
+              type: array
+              items:
+                type: string
+              minItems: 1
+              maxItems: 100
+              example: [좋아요!, 별로입니다., 그냥 그렇네요.]
+    responses:
+      200:
+        description: 배치 감정 분석 성공
+      400:
+        schema:
+          $ref: '#/definitions/ErrorResponse'
+    """
     data = request.get_json()
 
     texts = data.get('texts', [])
@@ -447,6 +974,179 @@ def sentiment_stats():
         'success': True,
         'summary': summary,
         'distribution': distribution
+    })
+
+# ============================================================================
+# Rate Limiting 엔드포인트
+# ============================================================================
+
+@app.route('/api/v1/keys/<key_id>/rate-limit', methods=['GET'])
+@require_auth('admin')
+@handle_errors
+def get_key_rate_limit(key_id: str):
+    """
+    API 키의 현재 Rate Limiting 정보 조회
+    ---
+    tags:
+      - Rate Limiting
+    parameters:
+      - in: path
+        name: key_id
+        type: string
+        required: true
+    responses:
+      200:
+        description: Rate Limiting 정보
+        schema:
+          type: object
+          properties:
+            minute:
+              type: object
+            hour:
+              type: object
+            day:
+              type: object
+      404:
+        description: API 키를 찾을 수 없음
+    """
+    if not RATE_LIMITING_AVAILABLE or not rate_limit_middleware:
+        return jsonify({'error': 'Advanced rate limiting not available'}), 501
+
+    api_key = api_key_manager.get_api_key(key_id)
+    if not api_key:
+        return jsonify({'error': 'API key not found'}), 404
+
+    info = rate_limit_middleware.get_rate_limit_info(key_id)
+    return jsonify(info)
+
+@app.route('/api/v1/keys/<key_id>/rate-policy', methods=['POST'])
+@require_auth('admin')
+@handle_errors
+def update_rate_policy(key_id: str):
+    """
+    API 키의 Rate Limiting 정책 업데이트
+    ---
+    tags:
+      - Rate Limiting
+    parameters:
+      - in: path
+        name: key_id
+        type: string
+        required: true
+      - in: body
+        name: body
+        schema:
+          type: object
+          properties:
+            tier:
+              type: string
+              enum: [free, basic, pro, enterprise]
+            custom_policy:
+              type: object
+              properties:
+                requests_per_minute:
+                  type: integer
+                requests_per_hour:
+                  type: integer
+                requests_per_day:
+                  type: integer
+    responses:
+      200:
+        description: 정책 업데이트 성공
+      404:
+        description: API 키를 찾을 수 없음
+    """
+    if not RATE_LIMITING_AVAILABLE:
+        return jsonify({'error': 'Advanced rate limiting not available'}), 501
+
+    api_key = api_key_manager.get_api_key(key_id)
+    if not api_key:
+        return jsonify({'error': 'API key not found'}), 404
+
+    data = request.get_json()
+    tier = data.get('tier')
+    custom_policy = data.get('custom_policy')
+
+    if tier:
+        if tier not in ['free', 'basic', 'pro', 'enterprise']:
+            return jsonify({'error': 'Invalid tier'}), 400
+        api_key.tier = tier
+        api_key_manager._save_keys()
+
+    if custom_policy:
+        # 커스텀 정책 설정
+        api_key.rate_limit_policy = custom_policy
+        api_key_manager._save_keys()
+
+    return jsonify({
+        'message': 'Rate policy updated successfully',
+        'tier': api_key.tier,
+        'policy': api_key.rate_limit_policy
+    })
+
+@app.route('/api/v1/keys/<key_id>/reset-rate-limit', methods=['POST'])
+@require_auth('admin')
+@handle_errors
+def reset_key_rate_limit(key_id: str):
+    """
+    API 키의 Rate Limiting 사용량 초기화
+    ---
+    tags:
+      - Rate Limiting
+    parameters:
+      - in: path
+        name: key_id
+        type: string
+        required: true
+    responses:
+      200:
+        description: 초기화 성공
+      404:
+        description: API 키를 찾을 수 없음
+    """
+    if not RATE_LIMITING_AVAILABLE or not rate_limit_middleware:
+        return jsonify({'error': 'Advanced rate limiting not available'}), 501
+
+    api_key = api_key_manager.get_api_key(key_id)
+    if not api_key:
+        return jsonify({'error': 'API key not found'}), 404
+
+    rate_limit_middleware.reset_user_limit(key_id)
+    return jsonify({'message': 'Rate limit reset successfully'})
+
+@app.route('/api/v1/rate-limits/status', methods=['GET'])
+@require_auth('admin')
+@handle_errors
+def get_rate_limits_status():
+    """
+    전체 Rate Limiting 상태 조회
+    ---
+    tags:
+      - Rate Limiting
+    responses:
+      200:
+        description: 전체 Rate Limiting 상태
+    """
+    if not RATE_LIMITING_AVAILABLE or not rate_limit_middleware:
+        return jsonify({'error': 'Advanced rate limiting not available'}), 501
+
+    keys = api_key_manager.list_api_keys()
+    status = []
+
+    for key_info in keys:
+        key_id = key_info['key_id']
+        try:
+            stats = rate_limiter.get_stats(key_id)
+            status.append(stats)
+        except Exception as e:
+            logger.error(f"Error getting stats for {key_id}: {e}")
+
+    return jsonify({
+        'total_keys': len(keys),
+        'active_keys': len([k for k in keys if k['is_active']]),
+        'rate_limiting_enabled': True,
+        'storage_type': 'Redis' if REDIS_AVAILABLE else 'Memory',
+        'stats': status
     })
 
 # ============================================================================
