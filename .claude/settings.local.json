@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(touch /d/claude/.claude/plans/dealbot-advanced-features-plan.md)",
+      "Read(//d/claude/.claude/plans//**)"
+    ]
+  }
+}
