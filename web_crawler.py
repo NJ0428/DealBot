@@ -695,9 +695,21 @@ class WebCrawler:
 
     def search_google_news(self, keyword: str, max_results: int = Config.DEFAULT_MAX_RESULTS,
                            use_cache: Optional[bool] = None,
-                           filter_criteria: Optional[FilterCriteria] = None) -> List[Dict[str, str]]:
+                           filter_criteria: Optional[FilterCriteria] = None,
+                           progress_callback: Optional[Callable[[int, int, Optional[str]], bool]] = None) -> List[Dict[str, str]]:
         """
         Google News에서 키워드 검색 결과 크롤링
+
+        Args:
+            keyword: 검색 키워드
+            max_results: 최대 결과 수
+            use_cache: 캐시 사용 여부
+            filter_criteria: 필터링 기준
+            progress_callback: 진행률 콜백 함수 (completed, total, current_url) -> bool
+
+        Returns:
+            크롤링된 데이터 리스트
+        """
 
         Args:
             keyword: 검색 키워드
@@ -774,6 +786,13 @@ class WebCrawler:
                     pbar.update(1)
                     pbar.set_postfix({"현재": f"{article_count}개"})
 
+                    # 진행률 콜백 호출
+                    if progress_callback:
+                        should_continue = progress_callback(article_count, max_results, title)
+                        if not should_continue:
+                            logger.info("크롤링이 중단되었습니다")
+                            break
+
                 except (AttributeError, KeyError, IndexError) as e:
                     logger.warning(f"아티클 파싱 오류: {e}")
                     continue
@@ -793,7 +812,8 @@ class WebCrawler:
 
     def search_naver_blog(self, keyword: str, max_results: int = Config.DEFAULT_MAX_RESULTS,
                           use_cache: Optional[bool] = None,
-                          filter_criteria: Optional[FilterCriteria] = None) -> List[Dict[str, str]]:
+                          filter_criteria: Optional[FilterCriteria] = None,
+                          progress_callback: Optional[Callable[[int, int, Optional[str]], bool]] = None) -> List[Dict[str, str]]:
         """
         네이버 블로그 검색 결과 크롤링
 
@@ -802,6 +822,7 @@ class WebCrawler:
             max_results: 최대 결과 수
             use_cache: 캐시 사용 여부
             filter_criteria: 필터링 기준
+            progress_callback: 진행률 콜백 함수 (completed, total, current_url) -> bool
 
         Returns:
             크롤링된 데이터 리스트
@@ -867,6 +888,13 @@ class WebCrawler:
                     articles.append(article_data)
                     pbar.update(1)
 
+                    # 진행률 콜백 호출
+                    if progress_callback:
+                        should_continue = progress_callback(len(articles), max_results, title)
+                        if not should_continue:
+                            logger.info("크롤링이 중단되었습니다")
+                            break
+
                 except (AttributeError, KeyError, IndexError) as e:
                     logger.warning(f"포스트 파싱 오류: {e}")
                     continue
@@ -921,6 +949,37 @@ class WebCrawler:
                     time.sleep(Config.REQUEST_DELAY)  # 요청 간격
 
         return results
+
+    def search_multiple_sources(self, keyword: str, max_results: int = Config.DEFAULT_MAX_RESULTS,
+                                progress_callback: Optional[Callable[[int, int, Optional[str]], bool]] = None) -> List[Dict[str, str]]:
+        """
+        여러 소스에서 검색 결과 수집
+
+        Args:
+            keyword: 검색 키워드
+            max_results: 각 소스당 최대 결과 수
+            progress_callback: 진행률 콜백 함수
+
+        Returns:
+            모든 소스의 검색 결과를 합친 리스트
+        """
+        all_results = []
+        sources = ['naver', 'google']
+
+        for i, source in enumerate(sources):
+            if progress_callback:
+                should_continue = progress_callback(i, len(sources), source)
+                if not should_continue:
+                    break
+
+            if source == 'naver':
+                results = self.search_naver_blog(keyword, max_results, progress_callback=progress_callback)
+            elif source == 'google':
+                results = self.search_google_news(keyword, max_results, progress_callback=progress_callback)
+
+            all_results.extend(results)
+
+        return all_results
 
     def crawl_custom_url(self, url: str, selector: Optional[str] = None) -> List[Dict[str, str]]:
         """
