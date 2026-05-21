@@ -1,0 +1,11 @@
+{
+  "credentials_path": "",
+  "api_key": "",
+  "default_target_language": "en",
+  "supported_languages": ["ko", "en", "ja", "zh", "es", "fr", "de", "ru"],
+  "auto_detect_language": true,
+  "translate_search_results": true,
+  "translate_keywords": true,
+  "cache_translations": true,
+  "max_cache_size": 1000
+}
