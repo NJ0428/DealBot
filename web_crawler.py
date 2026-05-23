@@ -36,6 +36,7 @@ from plotly.subplots import make_subplots
 from collections import Counter
 import webbrowser
 import os
+from translation_service import TranslationService, MultiLanguageSearchHelper, TranslationConfig, SupportedLanguage
 
 
 # ============================================================================
@@ -83,6 +84,14 @@ class Config:
     CHART_HEIGHT: int = 6
     PLOTLY_WIDTH: int = 1200
     PLOTLY_HEIGHT: int = 600
+
+    # 다국어 관련
+    TRANSLATION_CONFIG_FILE: str = "translation_config.json"
+    DEFAULT_SOURCE_LANGUAGE: str = "ko"  # 한국어
+    DEFAULT_TARGET_LANGUAGE: str = "en"  # 영어
+    SUPPORTED_LANGUAGES: List[str] = ["ko", "en", "ja", "zh", "es", "fr", "de", "ru"]
+    TRANSLATE_SEARCH_RESULTS: bool = False  # 기본적으로 결과 번역 비활성화
+    MULTILINGUAL_SEARCH: bool = False  # 기본적으로 다국어 검색 비활성화
 
 
 def setup_logging(log_dir: str = Config.LOG_DIR) -> logging.Logger:
@@ -623,10 +632,11 @@ class AsyncWebCrawler:
 # ============================================================================
 
 class WebCrawler:
-    """웹 크롤러 클래스 (업그레이드 버전)"""
+    """웹 크롤러 클래스 (업그레이드 버전 + 다국어 지원)"""
 
     def __init__(self, base_url: str = "https://news.google.com", use_cache: bool = True,
-                 use_proxy: bool = False):
+                 use_proxy: bool = False, enable_translation: bool = False,
+                 translation_config_file: Optional[str] = None):
         """
         웹 크롤러 초기화
 
@@ -634,6 +644,8 @@ class WebCrawler:
             base_url: 기본 URL
             use_cache: 캐시 사용 여부
             use_proxy: 프록시 사용 여부
+            enable_translation: 번역 서비스 사용 여부
+            translation_config_file: 번역 설정 파일 경로
         """
         self.base_url = base_url
         self.session = requests.Session()
@@ -655,7 +667,167 @@ class WebCrawler:
         if use_proxy and self.proxy_manager:
             self.async_crawler = AsyncWebCrawler(proxies=self.proxy_manager.proxies)
 
-        logger.info(f"웹 크롤러 초기화 (캐시: {use_cache}, 프록시: {use_proxy})")
+        # 번역 서비스
+        self.enable_translation = enable_translation
+        self.translation_service = None
+        self.multilang_helper = None
+        self.translation_config = None
+
+        if enable_translation:
+            config_file = translation_config_file or Config.TRANSLATION_CONFIG_FILE
+            self._init_translation_service(config_file)
+
+        logger.info(f"웹 크롤러 초기화 (캐시: {use_cache}, 프록시: {use_proxy}, 번역: {enable_translation})")
+
+    def _init_translation_service(self, config_file: str) -> None:
+        """
+        번역 서비스 초기화
+
+        Args:
+            config_file: 번역 설정 파일 경로
+        """
+        try:
+            self.translation_config = TranslationConfig(config_file)
+
+            self.translation_service = TranslationService(
+                credentials_path=self.translation_config.get_credentials_path(),
+                api_key=self.translation_config.get_api_key()
+            )
+
+            if self.translation_service.is_available():
+                self.multilang_helper = MultiLanguageSearchHelper(self.translation_service)
+                logger.info("번역 서비스 초기화 성공")
+            else:
+                logger.warning("번역 서비스가 사용 가능하지 않습니다.")
+
+        except Exception as e:
+            logger.error(f"번역 서비스 초기화 오류: {e}")
+
+    def is_translation_available(self) -> bool:
+        """
+        번역 서비스 사용 가능 여부 확인
+
+        Returns:
+            사용 가능 여부
+        """
+        return self.enable_translation and self.translation_service is not None and self.translation_service.is_available()
+
+    def translate_keyword(self, keyword: str, target_language: str) -> Optional[str]:
+        """
+        키워드 번역
+
+        Args:
+            keyword: 번역할 키워드
+            target_language: 목표 언어 코드
+
+        Returns:
+            번역된 키워드 또는 None
+        """
+        if not self.is_translation_available():
+            logger.warning("번역 서비스를 사용할 수 없습니다.")
+            return None
+
+        return self.translation_service.translate(keyword, target_language)
+
+    def get_multilingual_keywords(self, keyword: str,
+                                  languages: Optional[List[str]] = None) -> Dict[str, List[str]]:
+        """
+        다국어 키워드 생성
+
+        Args:
+            keyword: 기본 키워드
+            languages: 번역할 언어 리스트 (None인 경우 설정에서 사용)
+
+        Returns:
+            {언어코드: [키워드들]} 딕셔너리
+        """
+        if not self.is_translation_available():
+            logger.warning("번역 서비스를 사용할 수 없어 원본 키워드만 사용합니다.")
+            return {"ko": [keyword]}
+
+        if languages is None:
+            languages = self.translation_config.get_supported_languages()
+
+        return self.multilang_helper.prepare_multilingual_keywords(keyword, languages)
+
+    def translate_search_results(self, results: List[Dict],
+                                target_language: str = "en",
+                                keys_to_translate: Optional[Set[str]] = None) -> List[Dict]:
+        """
+        검색 결과 번역
+
+        Args:
+            results: 검색 결과 딕셔너리 리스트
+            target_language: 목표 언어 코드
+            keys_to_translate: 번역할 키 집합
+
+        Returns:
+            번역된 검색 결과 리스트
+        """
+        if not self.is_translation_available():
+            logger.warning("번역 서비스를 사용할 수 없어 원본 결과를 반환합니다.")
+            return results
+
+        return self.multilang_helper.translate_search_results(
+            results, target_language, keys_to_translate
+        )
+
+    def search_multilingual(self, keyword: str, languages: Optional[List[str]] = None,
+                           max_results: int = Config.DEFAULT_MAX_RESULTS,
+                           translate_results: bool = False,
+                           target_language: str = "en") -> Dict[str, List[Dict]]:
+        """
+        다국어 검색 수행
+
+        Args:
+            keyword: 검색 키워드
+            languages: 검색할 언어 리스트
+            max_results: 언어당 최대 결과 수
+            translate_results: 결과 번역 여부
+            target_language: 결과 번역할 언어
+
+        Returns:
+            {언어코드: 검색결과} 딕셔너리
+        """
+        if not self.is_translation_available():
+            logger.warning("번역 서비스를 사용할 수 없어 기본 검색만 수행합니다.")
+            results = self.search_google_news(keyword, max_results)
+            return {"ko": results}
+
+        # 다국어 키워드 준비
+        if languages is None:
+            languages = self.translation_config.get_supported_languages()
+
+        multilingual_keywords = self.get_multilingual_keywords(keyword, languages)
+        all_results = {}
+
+        # 각 언어별 검색 수행
+        for lang, keywords in multilingual_keywords.items():
+            lang_results = []
+
+            for kw in keywords:
+                results = self.search_google_news(kw, max_results)
+                lang_results.extend(results)
+
+            # 중복 제거
+            seen_links = set()
+            unique_results = []
+            for result in lang_results:
+                link = result.get('링크', '')
+                if link and link not in seen_links:
+                    seen_links.add(link)
+                    unique_results.append(result)
+
+            all_results[lang] = unique_results
+
+        # 결과 번역
+        if translate_results:
+            for lang, results in all_results.items():
+                if lang != target_language:
+                    all_results[lang] = self.translate_search_results(results, target_language)
+
+        logger.info(f"다국어 검색 완료: {len(all_results)}개 언어, 총 {sum(len(r) for r in all_results.values())}개 결과")
+        return all_results
 
     def _get_proxy(self) -> Optional[Dict[str, str]]:
         """
@@ -1725,8 +1897,9 @@ def main() -> None:
     print("\n[설정]")
     use_cache = input("캐시 사용? (y/n, 기본값: y): ").strip().lower() != 'n'
     use_proxy = input("프록시 사용? (y/n, 기본값: n): ").strip().lower() == 'y'
+    enable_translation = input("다국어/번역 기능 사용? (y/n, 기본값: n): ").strip().lower() == 'y'
 
-    crawler = WebCrawler(use_cache=use_cache, use_proxy=use_proxy)
+    crawler = WebCrawler(use_cache=use_cache, use_proxy=use_proxy, enable_translation=enable_translation)
     exporter = ExcelExporter()
     visualizer = DataVisualizer()  # 시각화 객체 초기화
 
@@ -1738,8 +1911,9 @@ def main() -> None:
     print("4. 다중 키워드 검색 (Google News)")
     print("5. 필터링 옵션 적용 검색")
     print("6. 데이터 시각화 분석")
+    print("7. 다국어 검색 (Google Translation API)")
 
-    mode = input("\n모드를 선택하세요 (1-6): ").strip()
+    mode = input("\n모드를 선택하세요 (1-7): ").strip()
 
     all_data: Dict[str, List[Dict[str, str]]] = {}
     filter_criteria = None
@@ -1840,6 +2014,52 @@ def main() -> None:
 
             if data:
                 all_data[f"Visualization_{keyword}"] = data
+
+    elif mode == "7":
+        # 다국어 검색
+        print("\n[다국어 검색 모드]")
+        print("Google Translation API를 사용하여 다국어 검색을 수행합니다.")
+
+        if not crawler.is_translation_available():
+            print("❌ 번역 서비스를 사용할 수 없습니다.")
+            print("Google Cloud 자격 증명을 설정해주세요.")
+            crawler.close()
+            return
+
+        keyword = input("검색 키워드: ").strip()
+
+        # 언어 선택
+        print("\n검색할 언어를 선택하세요:")
+        all_langs = SupportedLanguage.get_all_languages()
+        for code, name in all_langs.items():
+            print(f"  {code}: {name}")
+
+        langs_input = input("\n언어 코드를 입력하세요 (쉼표로 구분, 예: ko,en,ja): ").strip()
+        languages = [l.strip() for l in langs_input.split(',') if l.strip()] if langs_input else Config.SUPPORTED_LANGUAGES
+
+        max_results_input = input(f"각 언어당 최대 결과 수 (기본값: {Config.DEFAULT_MAX_RESULTS}): ").strip()
+        max_results = int(max_results_input) if max_results_input.isdigit() else Config.DEFAULT_MAX_RESULTS
+
+        # 결과 번역 옵션
+        translate_option = input("검색 결과를 번역하시겠습니까? (y/n, 기본값: n): ").strip().lower() == 'y'
+        target_language = "en"  # 기본 번역 언어
+
+        if translate_option:
+            target_lang_input = input(f"번역할 언어 코드 (기본값: {target_language}): ").strip()
+            target_language = target_lang_input if target_lang_input else target_language
+
+        print(f"\n🔍 다국어 검색 시작: '{keyword}' ({len(languages)}개 언어)")
+        multilingual_results = crawler.search_multilingual(
+            keyword, languages, max_results, translate_option, target_language
+        )
+
+        # 결과 저장
+        for lang, results in multilingual_results.items():
+            if results:
+                lang_name = SupportedLanguage.get_language_name(lang)
+                all_data[f"Multi_{lang_name}_{keyword}"] = results
+
+        print(f"✅ 다국어 검색 완료: {len(all_data)}개 언어에서 검색")
 
     else:
         print("❌ 잘못된 선택입니다.")
