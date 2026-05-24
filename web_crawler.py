@@ -19,7 +19,7 @@ from urllib.parse import urljoin, urlparse
 import time
 import re
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Set, Callable
+from typing import List, Dict, Optional, Set, Callable, Any
 import json
 import logging
 import asyncio
@@ -37,6 +37,7 @@ from collections import Counter
 import webbrowser
 import os
 from translation_service import TranslationService, MultiLanguageSearchHelper, TranslationConfig, SupportedLanguage
+from multilingual_sentiment_analyzer import MultilingualSentimentAnalyzer, MultilingualSentimentConfig, MultilingualSentimentFilter
 
 
 # ============================================================================
@@ -92,6 +93,12 @@ class Config:
     SUPPORTED_LANGUAGES: List[str] = ["ko", "en", "ja", "zh", "es", "fr", "de", "ru"]
     TRANSLATE_SEARCH_RESULTS: bool = False  # 기본적으로 결과 번역 비활성화
     MULTILINGUAL_SEARCH: bool = False  # 기본적으로 다국어 검색 비활성화
+    AUTO_TRANSLATE_COLLECTED: bool = False  # 수집 데이터 자동 번역
+    TRANSLATE_FIELDS: Set[str] = {'제목', '요약'}  # 자동 번역할 필드
+
+    # 다국어 감정 분석 관련
+    ENABLE_MULTILINGUAL_SENTIMENT: bool = False  # 다국어 감정 분석 활성화
+    SENTIMENT_CONFIG_FILE: str = "multilingual_sentiment_config.json"  # 감정 분석 설정 파일
 
 
 def setup_logging(log_dir: str = Config.LOG_DIR) -> logging.Logger:
@@ -632,11 +639,13 @@ class AsyncWebCrawler:
 # ============================================================================
 
 class WebCrawler:
-    """웹 크롤러 클래스 (업그레이드 버전 + 다국어 지원)"""
+    """웹 크롤러 클래스 (업그레이드 버전 + 다국어 지원 + 자동 번역)"""
 
     def __init__(self, base_url: str = "https://news.google.com", use_cache: bool = True,
                  use_proxy: bool = False, enable_translation: bool = False,
-                 translation_config_file: Optional[str] = None):
+                 translation_config_file: Optional[str] = None,
+                 auto_translate_collected: bool = False,
+                 translate_fields: Optional[Set[str]] = None):
         """
         웹 크롤러 초기화
 
@@ -646,6 +655,8 @@ class WebCrawler:
             use_proxy: 프록시 사용 여부
             enable_translation: 번역 서비스 사용 여부
             translation_config_file: 번역 설정 파일 경로
+            auto_translate_collected: 수집 데이터 자동 번역 여부
+            translate_fields: 자동 번역할 필드 집합
         """
         self.base_url = base_url
         self.session = requests.Session()
@@ -673,11 +684,28 @@ class WebCrawler:
         self.multilang_helper = None
         self.translation_config = None
 
+        # 자동 번역 설정
+        self.auto_translate_collected = auto_translate_collected
+        self.translate_fields = translate_fields or Config.TRANSLATE_FIELDS
+
+        # 다국어 감정 분석 서비스
+        self.enable_multilingual_sentiment = Config.ENABLE_MULTILINGUAL_SENTIMENT
+        self.multilingual_sentiment_analyzer = None
+        self.sentiment_config = None
+
         if enable_translation:
             config_file = translation_config_file or Config.TRANSLATION_CONFIG_FILE
             self._init_translation_service(config_file)
+            # 번역 설정에서 자동 번역 옵션 로드
+            if self.translation_config:
+                self.auto_translate_collected = self.translation_config.should_translate_search_results()
+                logger.info(f"번역 설정에서 자동 번역 옵션 로드: {self.auto_translate_collected}")
 
-        logger.info(f"웹 크롤러 초기화 (캐시: {use_cache}, 프록시: {use_proxy}, 번역: {enable_translation})")
+        # 다국어 감정 분석 초기화
+        if self.enable_multilingual_sentiment:
+            self._init_multilingual_sentiment()
+
+        logger.info(f"웹 크롤러 초기화 (캐시: {use_cache}, 프록시: {use_proxy}, 번역: {enable_translation}, 자동 번역: {self.auto_translate_collected}, 다국어 감정 분석: {self.enable_multilingual_sentiment})")
 
     def _init_translation_service(self, config_file: str) -> None:
         """
@@ -702,6 +730,25 @@ class WebCrawler:
 
         except Exception as e:
             logger.error(f"번역 서비스 초기화 오류: {e}")
+
+    def _init_multilingual_sentiment(self) -> None:
+        """다국어 감정 분석 서비스 초기화"""
+        try:
+            sentiment_config = MultilingualSentimentConfig(
+                use_translation=self.enable_translation,
+                enabled_languages=Config.SUPPORTED_LANGUAGES
+            )
+
+            self.multilingual_sentiment_analyzer = MultilingualSentimentAnalyzer(sentiment_config)
+
+            if self.multilingual_sentiment_analyzer:
+                logger.info("다국어 감정 분석 서비스 초기화 성공")
+            else:
+                logger.warning("다국어 감정 분석 서비스를 사용할 수 없습니다.")
+
+        except Exception as e:
+            logger.error(f"다국어 감정 분석 서비스 초기화 오류: {e}")
+            self.multilingual_sentiment_analyzer = None
 
     def is_translation_available(self) -> bool:
         """
@@ -771,6 +818,200 @@ class WebCrawler:
         return self.multilang_helper.translate_search_results(
             results, target_language, keys_to_translate
         )
+
+    def auto_translate_item(self, item: Dict, target_language: Optional[str] = None) -> Dict:
+        """
+        단일 아이템 자동 번역
+
+        Args:
+            item: 번역할 데이터 딕셔너리
+            target_language: 목표 언어 코드 (None인 경우 설정에서 사용)
+
+        Returns:
+            번역된 아이템 (원본 데이터 포함)
+        """
+        if not self.is_translation_available():
+            return item
+
+        if target_language is None:
+            target_language = self.translation_config.get_default_target_language() if self.translation_config else "en"
+
+        translated_item = item.copy()
+
+        # 지정된 필드들만 번역
+        for field in self.translate_fields:
+            if field in item and isinstance(item[field], str) and item[field].strip():
+                original_value = item[field]
+                translated_value = self.translation_service.translate(original_value, target_language)
+
+                if translated_value:
+                    # 번역된 값 저장
+                    translated_item[f"{field}_translated"] = translated_value
+                    translated_item[f"{field}_lang"] = target_language
+                    logger.debug(f"필드 '{field}' 번역: {original_value[:30]}... -> {translated_value[:30]}...")
+
+        return translated_item
+
+    def auto_translate_batch(self, items: List[Dict], target_language: Optional[str] = None) -> List[Dict]:
+        """
+        여러 아이템 일괄 자동 번역
+
+        Args:
+            items: 번역할 데이터 리스트
+            target_language: 목표 언어 코드 (None인 경우 설정에서 사용)
+
+        Returns:
+            번역된 아이템 리스트
+        """
+        if not self.is_translation_available():
+            logger.info("번역 서비스가 사용 가능하지 않아 자동 번역을 건너뜁니다.")
+            return items
+
+        translated_items = []
+
+        with tqdm(total=len(items), desc="자동 번역", unit="항목") as pbar:
+            for i, item in enumerate(items):
+                translated_item = self.auto_translate_item(item, target_language)
+                translated_items.append(translated_item)
+                pbar.update(1)
+                pbar.set_postfix({"완료": f"{i+1}/{len(items)}"})
+
+        logger.info(f"일괄 자동 번역 완료: {len(items)}개 항목")
+        return translated_items
+
+    def enable_auto_translation(self, enabled: bool = True, fields: Optional[Set[str]] = None) -> None:
+        """
+        자동 번역 기능 활성화/비활성화
+
+        Args:
+            enabled: 활성화 여부
+            fields: 번역할 필드 집합 (None인 경우 기본 필드 사용)
+        """
+        self.auto_translate_collected = enabled
+        if fields:
+            self.translate_fields = fields
+        logger.info(f"자동 번역 기능 {'활성화' if enabled else '비활성화'}, 번역 필드: {self.translate_fields}")
+
+    def get_auto_translation_status(self) -> Dict[str, any]:
+        """
+        자동 번역 상태 반환
+
+        Returns:
+            자동 번역 상태 정보
+        """
+        return {
+            "enabled": self.auto_translate_collected,
+            "available": self.is_translation_available(),
+            "translate_fields": list(self.translate_fields),
+            "default_target_language": self.translation_config.get_default_target_language() if self.translation_config else "en"
+        }
+
+    def is_multilingual_sentiment_available(self) -> bool:
+        """
+        다국어 감정 분석 사용 가능 여부 확인
+
+        Returns:
+            사용 가능 여부
+        """
+        return self.enable_multilingual_sentiment and self.multilingual_sentiment_analyzer is not None
+
+    def analyze_sentiment_multilingual(self, data: List[Dict]) -> List[Dict]:
+        """
+        다국어 감정 분석 수행
+
+        Args:
+            data: 분석할 데이터 리스트
+
+        Returns:
+            감정 분석 결과가 포함된 데이터 리스트
+        """
+        if not self.is_multilingual_sentiment_available():
+            logger.warning("다국어 감정 분석을 사용할 수 없습니다.")
+            return data
+
+        try:
+            logger.info(f"다국어 감정 분석 시작: {len(data)}개 항목")
+            analyzed_data = self.multilingual_sentiment_analyzer.analyze_data(data)
+            logger.info(f"다국어 감정 분석 완료")
+            return analyzed_data
+        except Exception as e:
+            logger.error(f"다국어 감정 분석 오류: {e}")
+            return data
+
+    def get_sentiment_summary(self, data: List[Dict]) -> Dict:
+        """
+        감정 분석 요약 통계
+
+        Args:
+            data: 감정 분석이 된 데이터
+
+        Returns:
+            감정 분석 요약 통계
+        """
+        if not self.is_multilingual_sentiment_available():
+            logger.warning("다국어 감정 분석을 사용할 수 없습니다.")
+            return {}
+
+        try:
+            return MultilingualSentimentFilter.get_multilingual_summary(data)
+        except Exception as e:
+            logger.error(f"감정 요약 통계 오류: {e}")
+            return {}
+
+    def filter_by_language_and_sentiment(
+        self, data: List[Dict],
+        sentiment: str = 'positive',
+        language: Optional[str] = None,
+        min_score: float = 0.0
+    ) -> List[Dict]:
+        """
+        언어와 감정으로 필터링
+
+        Args:
+            data: 필터링할 데이터
+            sentiment: 감정 라벨
+            language: 언어 코드 (None이면 모든 언어)
+            min_score: 최소 감정 점수
+
+        Returns:
+            필터링된 데이터
+        """
+        if not self.is_multilingual_sentiment_available():
+            logger.warning("다국어 감정 분석을 사용할 수 없습니다.")
+            return data
+
+        try:
+            return MultilingualSentimentFilter.filter_by_sentiment_and_language(
+                data, sentiment, language, min_score
+            )
+        except Exception as e:
+            logger.error(f"감정 필터링 오류: {e}")
+            return data
+
+    def enable_multilingual_sentiment(self, enabled: bool = True) -> None:
+        """
+        다국어 감정 분석 활성화/비활성화
+
+        Args:
+            enabled: 활성화 여부
+        """
+        self.enable_multilingual_sentiment = enabled
+
+        if enabled and not self.multilingual_sentiment_analyzer:
+            self._init_multilingual_sentiment()
+
+        logger.info(f"다국어 감정 분석 {'활성화' if enabled else '비활성화'}")
+
+    def get_supported_languages(self) -> Dict[str, str]:
+        """
+        지원하는 언어 목록 반환
+
+        Returns:
+            {언어코드: 언어이름} 딕셔너리
+        """
+        if self.multilingual_sentiment_analyzer:
+            return self.multilingual_sentiment_analyzer.get_supported_languages()
+        return {}
 
     def search_multilingual(self, keyword: str, languages: Optional[List[str]] = None,
                            max_results: int = Config.DEFAULT_MAX_RESULTS,
@@ -973,6 +1214,17 @@ class WebCrawler:
         if filter_criteria:
             articles = ResultFilter.apply_filters(articles, filter_criteria)
 
+        # 자동 번역 적용
+        if self.auto_translate_collected and self.is_translation_available():
+            logger.info(f"자동 번역 적용 중... ({len(articles)}개 항목)")
+            target_language = self.translation_config.get_default_target_language() if self.translation_config else "en"
+            articles = self.auto_translate_batch(articles, target_language)
+
+        # 다국어 감정 분석 적용
+        if self.enable_multilingual_sentiment and self.is_multilingual_sentiment_available():
+            logger.info(f"다국어 감정 분석 적용 중... ({len(articles)}개 항목)")
+            articles = self.analyze_sentiment_multilingual(articles)
+
         # 캐시 저장
         if use_cache and self.cache_manager:
             self.cache_manager.set('news', keyword, articles, max_results=max_results)
@@ -1074,6 +1326,17 @@ class WebCrawler:
         # 필터링 적용
         if filter_criteria:
             articles = ResultFilter.apply_filters(articles, filter_criteria)
+
+        # 자동 번역 적용
+        if self.auto_translate_collected and self.is_translation_available():
+            logger.info(f"자동 번역 적용 중... ({len(articles)}개 항목)")
+            target_language = self.translation_config.get_default_target_language() if self.translation_config else "en"
+            articles = self.auto_translate_batch(articles, target_language)
+
+        # 다국어 감정 분석 적용
+        if self.enable_multilingual_sentiment and self.is_multilingual_sentiment_available():
+            logger.info(f"다국어 감정 분석 적용 중... ({len(articles)}개 항목)")
+            articles = self.analyze_sentiment_multilingual(articles)
 
         # 캐시 저장
         if use_cache and self.cache_manager:
@@ -1899,7 +2162,21 @@ def main() -> None:
     use_proxy = input("프록시 사용? (y/n, 기본값: n): ").strip().lower() == 'y'
     enable_translation = input("다국어/번역 기능 사용? (y/n, 기본값: n): ").strip().lower() == 'y'
 
-    crawler = WebCrawler(use_cache=use_cache, use_proxy=use_proxy, enable_translation=enable_translation)
+    # 자동 번역 설정
+    auto_translate = False
+    if enable_translation:
+        auto_translate = input("수집 데이터 자동 번역? (y/n, 기본값: n): ").strip().lower() == 'y'
+
+    # 다국어 감정 분석 설정
+    enable_sentiment = input("다국어 감정 분석 사용? (y/n, 기본값: n): ").strip().lower() == 'y'
+
+    crawler = WebCrawler(
+        use_cache=use_cache,
+        use_proxy=use_proxy,
+        enable_translation=enable_translation,
+        auto_translate_collected=auto_translate,
+        enable_multilingual_sentiment=enable_sentiment
+    )
     exporter = ExcelExporter()
     visualizer = DataVisualizer()  # 시각화 객체 초기화
 
@@ -1912,8 +2189,10 @@ def main() -> None:
     print("5. 필터링 옵션 적용 검색")
     print("6. 데이터 시각화 분석")
     print("7. 다국어 검색 (Google Translation API)")
+    print("8. 자동 번역 테스트")
+    print("9. 다국어 감정 분석 테스트")
 
-    mode = input("\n모드를 선택하세요 (1-7): ").strip()
+    mode = input("\n모드를 선택하세요 (1-9): ").strip()
 
     all_data: Dict[str, List[Dict[str, str]]] = {}
     filter_criteria = None
@@ -2020,13 +2299,21 @@ def main() -> None:
         print("\n[다국어 검색 모드]")
         print("Google Translation API를 사용하여 다국어 검색을 수행합니다.")
 
+        # 현재 자동 번역 상태 표시
+        auto_status = crawler.get_auto_translation_status()
+        print(f"\n📋 현재 자동 번역 상태:")
+        print(f"   - 번역 서비스: {'✅ 사용 가능' if auto_status['available'] else '❌ 사용 불가'}")
+        print(f"   - 자동 번역: {'✅ 활성화' if auto_status['enabled'] else '❌ 비활성화'}")
+        print(f"   - 번역 필드: {', '.join(auto_status['translate_fields'])}")
+        print(f"   - 목표 언어: {auto_status['default_target_language']}")
+
         if not crawler.is_translation_available():
-            print("❌ 번역 서비스를 사용할 수 없습니다.")
+            print("\n❌ 번역 서비스를 사용할 수 없습니다.")
             print("Google Cloud 자격 증명을 설정해주세요.")
             crawler.close()
             return
 
-        keyword = input("검색 키워드: ").strip()
+        keyword = input("\n검색 키워드: ").strip()
 
         # 언어 선택
         print("\n검색할 언어를 선택하세요:")
@@ -2048,6 +2335,13 @@ def main() -> None:
             target_lang_input = input(f"번역할 언어 코드 (기본값: {target_language}): ").strip()
             target_language = target_lang_input if target_lang_input else target_language
 
+        # 자동 번역 옵션 (기존 설정 오버라이드)
+        if not crawler.auto_translate_collected:
+            auto_option = input("수집 데이터 자동 번역을 활성화하시겠습니까? (y/n, 기본값: n): ").strip().lower() == 'y'
+            if auto_option:
+                crawler.enable_auto_translation(True)
+                print("✅ 자동 번역 활성화됨")
+
         print(f"\n🔍 다국어 검색 시작: '{keyword}' ({len(languages)}개 언어)")
         multilingual_results = crawler.search_multilingual(
             keyword, languages, max_results, translate_option, target_language
@@ -2060,6 +2354,311 @@ def main() -> None:
                 all_data[f"Multi_{lang_name}_{keyword}"] = results
 
         print(f"✅ 다국어 검색 완료: {len(all_data)}개 언어에서 검색")
+
+    elif mode == "8":
+        # 자동 번역 테스트
+        print("\n[자동 번역 테스트 모드]")
+
+        # 현재 상태 표시
+        auto_status = crawler.get_auto_translation_status()
+        print(f"\n📋 현재 자동 번역 상태:")
+        print(f"   - 번역 서비스: {'✅ 사용 가능' if auto_status['available'] else '❌ 사용 불가'}")
+        print(f"   - 자동 번역: {'✅ 활성화' if auto_status['enabled'] else '❌ 비활성화'}")
+        print(f"   - 번역 필드: {', '.join(auto_status['translate_fields'])}")
+        print(f"   - 목표 언어: {auto_status['default_target_language']}")
+
+        if not crawler.is_translation_available():
+            print("\n❌ 번역 서비스를 사용할 수 없습니다.")
+            print("Google Cloud 자격 증명을 설정해주세요.")
+            crawler.close()
+            return
+
+        print("\n자동 번역 옵션 설정:")
+        print("1. 자동 번역 활성화")
+        print("2. 자동 번역 비활성화")
+        print("3. 번역 필드 설정")
+        print("4. 번역 테스트")
+        print("5. 검색 및 자동 번역 테스트")
+
+        test_mode = input("\n테스트 옵션을 선택하세요 (1-5): ").strip()
+
+        if test_mode == "1":
+            crawler.enable_auto_translation(True)
+            print("✅ 자동 번역이 활성화되었습니다.")
+
+        elif test_mode == "2":
+            crawler.enable_auto_translation(False)
+            print("✅ 자동 번역이 비활성화되었습니다.")
+
+        elif test_mode == "3":
+            print(f"\n현재 번역 필드: {', '.join(crawler.translate_fields)}")
+            fields_input = input("새로운 번역 필드 (쉼표로 구분, 예: 제목,요약,설명): ").strip()
+            if fields_input:
+                new_fields = set(f.strip() for f in fields_input.split(',') if f.strip())
+                crawler.enable_auto_translation(True, new_fields)
+                print(f"✅ 번역 필드가 업데이트되었습니다: {', '.join(new_fields)}")
+
+        elif test_mode == "4":
+            # 번역 테스트
+            test_text = input("\n번역할 텍스트: ").strip()
+            target_lang = input(f"목표 언어 코드 (기본값: {auto_status['default_target_language']}): ").strip()
+            target_language = target_lang if target_lang else auto_status['default_target_language']
+
+            print(f"\n🔄 '{test_text}' -> {target_language} 번역 중...")
+            translated = crawler.translation_service.translate(test_text, target_language)
+
+            if translated:
+                print(f"✅ 번역 결과: {translated}")
+            else:
+                print("❌ 번역 실패")
+
+        elif test_mode == "5":
+            # 검색 및 자동 번역 테스트
+            keyword = input("\n검색 키워드: ").strip()
+            max_results_input = input(f"최대 결과 수 (기본값: 5): ").strip()
+            max_results = int(max_results_input) if max_results_input.isdigit() else 5
+
+            # 자동 번역 활성화 확인
+            if not crawler.auto_translate_collected:
+                enable_auto = input("자동 번역을 활성화하시겠습니까? (y/n, 기본값: y): ").strip().lower() != 'n'
+                if enable_auto:
+                    crawler.enable_auto_translation(True)
+                    print("✅ 자동 번역이 활성화되었습니다.")
+
+            print(f"\n🔍 '{keyword}' 검색 및 자동 번역 중...")
+            data = crawler.search_google_news(keyword, max_results)
+
+            if data:
+                all_data[f"AutoTranslated_{keyword}"] = data
+
+                # 번역 결과 샘플 표시
+                print(f"\n📋 번역 결과 샘플 ({len(data)}개 항목 중):")
+                for i, item in enumerate(data[:3], 1):
+                    print(f"\n[{i}] {item.get('제목', '제목 없음')}")
+                    if '제목_translated' in item:
+                        print(f"    번역: {item['제목_translated']}")
+
+        # 업데이트된 상태 표시
+        updated_status = crawler.get_auto_translation_status()
+        print(f"\n📋 업데이트된 자동 번역 상태:")
+        print(f"   - 번역 서비스: {'✅ 사용 가능' if updated_status['available'] else '❌ 사용 불가'}")
+        print(f"   - 자동 번역: {'✅ 활성화' if updated_status['enabled'] else '❌ 비활성화'}")
+        print(f"   - 번역 필드: {', '.join(updated_status['translate_fields'])}")
+
+    elif mode == "9":
+        # 다국어 감정 분석 테스트
+        print("\n[다국어 감정 분석 테스트 모드]")
+
+        # 현재 상태 표시
+        print(f"\n📋 다국어 감정 분석 상태:")
+        print(f"   - 감정 분석 서비스: {'✅ 사용 가능' if crawler.is_multilingual_sentiment_available() else '❌ 사용 불가'}")
+        print(f"   - 활성화 여부: {'✅ 활성화' if crawler.enable_multilingual_sentiment else '❌ 비활성화'}")
+
+        if crawler.is_multilingual_sentiment_available():
+            print(f"   - 지원 언어: {', '.join(crawler.get_supported_languages().keys())}")
+        else:
+            print("\n❌ 다국어 감정 분석 서비스를 사용할 수 없습니다.")
+            print("감정 분석 라이브러리를 설치해주세요.")
+            crawler.close()
+            return
+
+        print("\n감정 분석 옵션:")
+        print("1. 단일 텍스트 분석")
+        print("2. 검색 데이터 감정 분석")
+        print("3. 감정 기반 필터링")
+        print("4. 감정 통계 요약")
+        print("5. 언어별 감정 분석")
+        print("6. 활성화/비활성화")
+
+        sentiment_mode = input("\n감정 분석 옵션을 선택하세요 (1-6): ").strip()
+
+        if sentiment_mode == "1":
+            # 단일 텍스트 분석
+            test_text = input("\n분석할 텍스트: ").strip()
+            if test_text:
+                print(f"\n🔄 감정 분석 중...")
+                result = crawler.multilingual_sentiment_analyzer.analyze(test_text)
+
+                print(f"\n📊 감정 분석 결과:")
+                print(f"   감지 언어: {result.detected_language}")
+                print(f"   감정 라벨: {result.label}")
+                print(f"   감정 점수: {result.sentiment_score:.3f}")
+                print(f"   긍정 점수: {result.positive_score:.3f}")
+                print(f"   부정 점수: {result.negative_score:.3f}")
+                print(f"   신뢰도: {result.confidence:.3f}")
+                print(f"   단어 수: {result.word_count}")
+
+                if result.positive_words:
+                    print(f"   긍정 단어: {', '.join(result.positive_words)}")
+                if result.negative_words:
+                    print(f"   부정 단어: {', '.join(result.negative_words)}")
+
+                if result.translation_used:
+                    print(f"   번역 사용: ✅ ({result.translated_text[:50]}...)")
+
+                # 언어별 결과
+                if result.language_results:
+                    print(f"\n   언어별 분석 결과:")
+                    for lang, lang_result in result.language_results.items():
+                        print(f"     {lang}: {lang_result.label} ({lang_result.sentiment_score:.3f})")
+
+        elif sentiment_mode == "2":
+            # 검색 데이터 감정 분석
+            keyword = input("\n검색 키워드: ").strip()
+            max_results_input = input(f"최대 결과 수 (기본값: 5): ").strip()
+            max_results = int(max_results_input) if max_results_input.isdigit() else 5
+
+            print(f"\n🔍 '{keyword}' 검색 및 감정 분석 중...")
+            data = crawler.search_google_news(keyword, max_results)
+
+            if data:
+                all_data[f"Sentiment_{keyword}"] = data
+
+                print(f"\n📊 감정 분석 결과:")
+                for i, item in enumerate(data[:3], 1):
+                    print(f"\n[{i}] {item.get('제목', 'No title')[:40]}...")
+                    print(f"   감지 언어: {item.get('detected_language', 'N/A')}")
+                    print(f"   감정: {item.get('sentiment_label', 'N/A')} ({item.get('sentiment_score', 0):.3f})")
+
+        elif sentiment_mode == "3":
+            # 감정 기반 필터링
+            print("\n감정 기반 필터링 옵션:")
+            print("1. 긍정만")
+            print("2. 부정만")
+            print("3. 중립만")
+            print("4. 특정 언어 긍정")
+
+            filter_mode = input("\n필터링 옵션을 선택하세요 (1-4): ").strip()
+
+            # 먼저 데이터 수집
+            keyword = input("\n검색 키워드 (새로 수집): ").strip()
+            if keyword:
+                print(f"🔍 '{keyword}' 검색 중...")
+                data = crawler.search_google_news(keyword, 5)
+
+                if not data:
+                    print("❌ 검색 결과 없음")
+                    crawler.close()
+                    return
+            else:
+                # 기존 데이터 사용
+                data = crawler.crawled_data.copy()
+                if not data:
+                    print("❌ 분석할 데이터가 없습니다.")
+                    crawler.close()
+                    return
+
+            # 필터링
+            if filter_mode == "1":
+                filtered = crawler.filter_by_language_and_sentiment(data, 'positive')
+                print(f"✅ 긍정 감정: {len(filtered)}개 항목")
+
+            elif filter_mode == "2":
+                filtered = crawler.filter_by_language_and_sentiment(data, 'negative')
+                print(f"✅ 부정 감정: {len(filtered)}개 항목")
+
+            elif filter_mode == "3":
+                filtered = crawler.filter_by_language_and_sentiment(data, 'neutral')
+                print(f"✅ 중립 감정: {len(filtered)}개 항목")
+
+            elif filter_mode == "4":
+                language = input("언어 코드 (예: ko, en, ja): ").strip()
+                min_score_input = input("최소 점수 (기본값: 0.3): ").strip()
+                min_score = float(min_score_input) if min_score_input else 0.3
+
+                filtered = crawler.filter_by_language_and_sentiment(data, 'positive', language, min_score)
+                print(f"✅ {language} 언어 긍정 감정 (점수 >= {min_score}): {len(filtered)}개 항목")
+
+            # 필터링 결과 표시
+            print(f"\n📋 필터링된 결과 (상위 3개):")
+            for i, item in enumerate(filtered[:3], 1):
+                print(f"\n[{i}] {item.get('제목', 'No title')[:40]}...")
+                print(f"   감정: {item.get('sentiment_label', 'N/A')} ({item.get('sentiment_score', 0):.3f})")
+
+        elif sentiment_mode == "4":
+            # 감정 통계 요약
+            print("\n감정 통계 요약 옵션:")
+            print("1. 새로운 검색 데이터")
+            print("2. 기존 수집 데이터")
+
+            data_source = input("\n데이터 소스를 선택하세요 (1-2): ").strip()
+
+            if data_source == "1":
+                keyword = input("\n검색 키워드: ").strip()
+                if keyword:
+                    print(f"🔍 '{keyword}' 검색 중...")
+                    data = crawler.search_google_news(keyword, 10)
+                else:
+                    print("❌ 키워드를 입력해주세요.")
+                    crawler.close()
+                    return
+            else:
+                data = crawler.crawled_data.copy()
+                if not data:
+                    print("❌ 분석할 데이터가 없습니다.")
+                    crawler.close()
+                    return
+
+            if data:
+                summary = crawler.get_sentiment_summary(data)
+
+                print(f"\n📊 감정 분석 통계:")
+                print(f"   총 분석: {summary.get('total_count', 0)}개")
+                print(f"   긍정: {summary.get('positive_count', 0)}개 ({summary.get('positive_ratio', 0):.1%})")
+                print(f"   부정: {summary.get('negative_count', 0)}개 ({summary.get('negative_ratio', 0):.1%})")
+                print(f"   중립: {summary.get('neutral_count', 0)}개 ({summary.get('neutral_ratio', 0):.1%})")
+                print(f"   평균 점수: {summary.get('avg_sentiment_score', 0):.3f}")
+                print(f"   번역 사용률: {summary.get('translation_usage_ratio', 0):.1%}")
+
+                # 언어별 분포
+                lang_dist = summary.get('language_distribution', {})
+                if lang_dist:
+                    print(f"\n   🌍 언어별 감정 분포:")
+                    for lang, counts in lang_dist.items():
+                        print(f"     {lang}: 긍정 {counts['positive']}, 부정 {counts['negative']}, 중립 {counts['neutral']}")
+
+        elif sentiment_mode == "5":
+            # 언어별 감정 분석
+            keyword = input("\n검색 키워드: ").strip()
+            if keyword:
+                print(f"🔍 '{keyword}' 검색 중...")
+                data = crawler.search_google_news(keyword, 10)
+
+                if data:
+                    lang_dist = MultilingualSentimentFilter.get_language_sentiment_distribution(data)
+
+                    print(f"\n🌍 언어별 감정 분포:")
+                    for lang, counts in lang_dist.items():
+                        total_lang = sum(counts.values())
+                        if total_lang > 0:
+                            print(f"\n   {lang} (총 {total_lang}개):")
+                            print(f"     긍정: {counts['positive']} ({counts['positive']/total_lang:.1%})")
+                            print(f"     부정: {counts['negative']} ({counts['negative']/total_lang:.1%})")
+                            print(f"     중립: {counts['neutral']} ({counts['neutral']/total_lang:.1%})")
+
+                            # 언어별 예시
+                            lang_items = [item for item in data if item.get('detected_language') == lang]
+                            if lang_items:
+                                print(f"     예시: {lang_items[0].get('제목', 'No title')[:30]}...")
+
+        elif sentiment_mode == "6":
+            # 활성화/비활성화
+            current_status = crawler.enable_multilingual_sentiment
+            print(f"\n현재 상태: {'활성화' if current_status else '비활성화'}")
+
+            new_status = input("상태를 변경하시겠습니까? (y/n): ").strip().lower() == 'y'
+            if new_status:
+                crawler.enable_multilingual_sentiment(not current_status)
+                print(f"✅ 상태 변경됨: {'활성화' if not current_status else '비활성화'}")
+
+        # 업데이트된 상태 표시
+        updated_sentiment_status = {
+            "available": crawler.is_multilingual_sentiment_available(),
+            "enabled": crawler.enable_multilingual_sentiment
+        }
+        print(f"\n📋 업데이트된 감정 분석 상태:")
+        print(f"   - 서비스 사용 가능: {'✅' if updated_sentiment_status['available'] else '❌'}")
+        print(f"   - 활성화 여부: {'✅' if updated_sentiment_status['enabled'] else '❌'}")
 
     else:
         print("❌ 잘못된 선택입니다.")
