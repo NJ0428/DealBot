@@ -1,0 +1,68 @@
+{
+  "general": {
+    "output_dir": "reports",
+    "template_dir": "report_templates",
+    "default_language": "ko",
+    "timezone": "Asia/Seoul"
+  },
+  "pdf_settings": {
+    "converter": "weasyprint",
+    "page_size": "A4",
+    "margin": "20mm",
+    "orientation": "portrait",
+    "encoding": "UTF-8",
+    "compress": true,
+    "dpi": 300
+  },
+  "report_types": {
+    "daily": {
+      "enabled": true,
+      "schedule": "09:00",
+      "retention_days": 30,
+      "include_sections": [
+        "summary",
+        "top_keywords",
+        "sentiment_overview",
+        "recent_items",
+        "quick_stats"
+      ],
+      "email_recipients": []
+    },
+    "weekly": {
+      "enabled": true,
+      "schedule": "monday 09:00",
+      "retention_days": 90,
+      "include_sections": [
+        "weekly_summary",
+        "keyword_trends",
+        "sentiment_analysis",
+        "growth_metrics",
+        "recommendations"
+      ],
+      "email_recipients": []
+    },
+    "monthly": {
+      "enabled": true,
+      "schedule": "1st 09:00",
+      "retention_days": 365,
+      "include_sections": [
+        "monthly_overview",
+        "detailed_trends",
+        "comprehensive_analysis",
+        "yearly_comparison",
+        "strategic_insights"
+      ],
+      "email_recipients": []
+    }
+  },
+  "email_notification": {
+    "enabled": false,
+    "recipients": [],
+    "subject_template": "Report: {report_type} - {date}",
+    "attach_pdf": true
+  },
+  "debug_mode": false,
+  "log_level": "INFO",
+  "max_retries": 3,
+  "timeout_seconds": 300
+}
