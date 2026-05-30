@@ -25,3 +25,7 @@ eventlet>=0.41.0
 psutil>=7.2.0
 google-cloud-translate>=3.12.0
 google-auth>=2.23.0
+weasyprint>=60.0
+pytz>=2024.1
+cairocffi>=1.6.0
+cssutils>=2.9.0
