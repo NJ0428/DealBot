@@ -16,15 +16,18 @@ logger = logging.getLogger(__name__)
 class HTMLReportTemplate:
     """HTML 리포트 템플릿 클래스"""
 
-    def __init__(self, template_dir: str = "report_templates"):
+    def __init__(self, template_dir: str = "report_templates", theme: str = "default"):
         """
         HTML 리포트 템플릿 초기화
 
         Args:
             template_dir: 템플릿 파일 디렉토리
+            theme: 테마 이름 (default, dark, corporate, minimal)
         """
         self.template_dir = template_dir
+        self.theme = theme
         self.template_cache = {}
+        self.theme_styles = self._get_theme_styles(theme)
         self._ensure_template_dir()
         self._load_templates()
 
@@ -38,6 +41,11 @@ class HTMLReportTemplate:
         components_dir = os.path.join(self.template_dir, "components")
         if not os.path.exists(components_dir):
             os.makedirs(components_dir)
+
+        # 테마 디렉토리 생성
+        themes_dir = os.path.join(self.template_dir, "themes")
+        if not os.path.exists(themes_dir):
+            os.makedirs(themes_dir)
 
     def _load_templates(self):
         """템플릿 파일 로드"""
@@ -64,6 +72,97 @@ class HTMLReportTemplate:
             with open(component_path, 'r', encoding='utf-8') as f:
                 return f.read()
         return ""
+
+    def _get_theme_styles(self, theme: str) -> Dict[str, str]:
+        """테마별 스타일 정의"""
+        theme_styles = {
+            'default': {
+                'primary_color': '#4a90e2',
+                'secondary_color': '#357abd',
+                'background_color': '#f5f5f5',
+                'text_color': '#333',
+                'heading_color': '#2c3e50',
+                'border_color': '#ecf0f1',
+                'success_color': '#27ae60',
+                'error_color': '#c0392b',
+                'warning_color': '#f39c12'
+            },
+            'dark': {
+                'primary_color': '#5c9aff',
+                'secondary_color': '#4a7cc9',
+                'background_color': '#1a1a1a',
+                'text_color': '#e0e0e0',
+                'heading_color': '#ffffff',
+                'border_color': '#333',
+                'success_color': '#4cd964',
+                'error_color': '#ff3b30',
+                'warning_color': '#ffcc00'
+            },
+            'corporate': {
+                'primary_color': '#2c5aa0',
+                'secondary_color': '#1e3d6f',
+                'background_color': '#f8f9fa',
+                'text_color': '#231f20',
+                'heading_color': '#1e3a8a',
+                'border_color': '#d1d5db',
+                'success_color': '#059669',
+                'error_color': '#dc2626',
+                'warning_color': '#d97706'
+            },
+            'minimal': {
+                'primary_color': '#000000',
+                'secondary_color': '#333333',
+                'background_color': '#ffffff',
+                'text_color': '#000000',
+                'heading_color': '#000000',
+                'border_color': '#e5e5e5',
+                'success_color': '#16a34a',
+                'error_color': '#dc2626',
+                'warning_color': '#ca8a04'
+            }
+        }
+        return theme_styles.get(theme, theme_styles['default'])
+
+    def set_theme(self, theme: str) -> bool:
+        """
+        테마 변경
+
+        Args:
+            theme: 테마 이름
+
+        Returns:
+            변경 성공 여부
+        """
+        if theme in ['default', 'dark', 'corporate', 'minimal']:
+            self.theme = theme
+            self.theme_styles = self._get_theme_styles(theme)
+            logger.info(f"테마 변경 완료: {theme}")
+            return True
+        else:
+            logger.warning(f"잘못된 테마: {theme}")
+            return False
+
+    def get_available_themes(self) -> list:
+        """사용 가능한 테마 목록 반환"""
+        return ['default', 'dark', 'corporate', 'minimal']
+
+    def apply_custom_styles(self, custom_styles: Dict[str, str]) -> bool:
+        """
+        사용자 정의 스타일 적용
+
+        Args:
+            custom_styles: 사용자 정의 스타일 딕셔너리
+
+        Returns:
+            적용 성공 여부
+        """
+        try:
+            self.theme_styles.update(custom_styles)
+            logger.info("사용자 정의 스타일 적용 완료")
+            return True
+        except Exception as e:
+            logger.error(f"사용자 정의 스타일 적용 실패: {e}")
+            return False
 
     def _render_template(self, template_content: str, context: Dict[str, Any]) -> str:
         """
@@ -575,256 +674,257 @@ class HTMLReportTemplate:
 
     def _get_base_template(self) -> str:
         """기본 템플릿 (헤더, 스타일, 푸터)"""
-        return """
+        styles = self.theme_styles
+        return f"""
         <!DOCTYPE html>
         <html lang="ko">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>{{ title }}</title>
+            <title>{{{{ title }}}}</title>
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
 
-                * {
+                * {{
                     margin: 0;
                     padding: 0;
                     box-sizing: border-box;
-                }
+                }}
 
-                body {
+                body {{
                     font-family: 'Noto Sans KR', sans-serif;
                     line-height: 1.6;
-                    color: #333;
-                    background-color: #f5f5f5;
+                    color: {styles['text_color']};
+                    background-color: {styles['background_color']};
                     padding: 20px;
-                }
+                }}
 
-                .container {
+                .container {{
                     max-width: 800px;
                     margin: 0 auto;
                     background: white;
                     padding: 40px;
                     border-radius: 8px;
                     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                }
+                }}
 
-                .header {
+                .header {{
                     text-align: center;
                     margin-bottom: 40px;
                     padding-bottom: 20px;
-                    border-bottom: 2px solid #4a90e2;
-                }
+                    border-bottom: 2px solid {styles['primary_color']};
+                }}
 
-                .header h1 {
-                    color: #4a90e2;
+                .header h1 {{
+                    color: {styles['primary_color']};
                     font-size: 28px;
                     margin-bottom: 10px;
-                }
+                }}
 
-                .header .meta {
+                .header .meta {{
                     color: #666;
                     font-size: 14px;
-                }
+                }}
 
-                .content {
+                .content {{
                     margin-bottom: 40px;
-                }
+                }}
 
-                .content h2 {
-                    color: #2c3e50;
+                .content h2 {{
+                    color: {styles['heading_color']};
                     font-size: 24px;
                     margin-bottom: 20px;
-                }
+                }}
 
-                .content h3 {
-                    color: #34495e;
+                .content h3 {{
+                    color: {styles['heading_color']};
                     font-size: 18px;
                     margin: 25px 0 15px 0;
                     padding-bottom: 8px;
-                    border-bottom: 1px solid #ecf0f1;
-                }
+                    border-bottom: 1px solid {styles['border_color']};
+                }}
 
-                .content h4 {
-                    color: #555;
+                .content h4 {{
+                    color: {styles['text_color']};
                     font-size: 16px;
                     margin: 15px 0 10px 0;
-                }
+                }}
 
-                .content p {
+                .content p {{
                     margin-bottom: 15px;
-                    color: #555;
-                }
+                    color: {styles['text_color']};
+                }}
 
-                .content strong {
-                    color: #2c3e50;
-                }
+                .content strong {{
+                    color: {styles['heading_color']};
+                }}
 
-                table {
+                table {{
                     width: 100%;
                     border-collapse: collapse;
                     margin: 20px 0;
-                }
+                }}
 
-                thead {
+                thead {{
                     background-color: #f8f9fa;
-                }
+                }}
 
-                th, td {
+                th, td {{
                     padding: 12px;
                     text-align: left;
                     border-bottom: 1px solid #ddd;
-                }
+                }}
 
-                th {
+                th {{
                     font-weight: 600;
-                    color: #2c3e50;
-                }
+                    color: {styles['heading_color']};
+                }}
 
-                tbody tr:hover {
+                tbody tr:hover {{
                     background-color: #f8f9fa;
-                }
+                }}
 
-                .sentiment-bars {
+                .sentiment-bars {{
                     margin: 20px 0;
-                }
+                }}
 
-                .sentiment-bar {
+                .sentiment-bar {{
                     margin-bottom: 15px;
-                }
+                }}
 
-                .sentiment-bar span {
+                .sentiment-bar span {{
                     display: inline-block;
                     width: 100px;
                     font-weight: 500;
-                }
+                }}
 
-                .sentiment-bar .bar {
+                .sentiment-bar .bar {{
                     display: inline-block;
                     height: 20px;
-                    background: linear-gradient(to right, #4a90e2, #357abd);
+                    background: linear-gradient(to right, {styles['primary_color']}, {styles['secondary_color']});
                     border-radius: 3px;
-                }
+                }}
 
-                .sentiment-bar.positive .bar {
-                    background: linear-gradient(to right, #27ae60, #2ecc71);
-                }
+                .sentiment-bar.positive .bar {{
+                    background: linear-gradient(to right, {styles['success_color']}, #2ecc71);
+                }}
 
-                .sentiment-bar.negative .bar {
-                    background: linear-gradient(to right, #c0392b, #e74c3c);
-                }
+                .sentiment-bar.negative .bar {{
+                    background: linear-gradient(to right, {styles['error_color']}, #e74c3c);
+                }}
 
-                .sentiment-bar.neutral .bar {
+                .sentiment-bar.neutral .bar {{
                     background: linear-gradient(to right, #7f8c8d, #95a5a6);
-                }
+                }}
 
-                .stats-grid {
+                .stats-grid {{
                     display: grid;
                     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
                     gap: 20px;
                     margin: 20px 0;
-                }
+                }}
 
-                .stat-item {
+                .stat-item {{
                     background: #f8f9fa;
                     padding: 20px;
                     border-radius: 6px;
                     text-align: center;
-                }
+                }}
 
-                .stat-label {
+                .stat-label {{
                     display: block;
                     color: #666;
                     font-size: 14px;
                     margin-bottom: 10px;
-                }
+                }}
 
-                .stat-value {
+                .stat-value {{
                     display: block;
-                    color: #4a90e2;
+                    color: {styles['primary_color']};
                     font-size: 24px;
                     font-weight: 700;
-                }
+                }}
 
-                .recent-item {
+                .recent-item {{
                     background: #f8f9fa;
                     padding: 15px;
                     border-radius: 6px;
                     margin-bottom: 15px;
-                    border-left: 4px solid #4a90e2;
-                }
+                    border-left: 4px solid {styles['primary_color']};
+                }}
 
-                .growth-comparison {
+                .growth-comparison {{
                     display: grid;
                     grid-template-columns: 1fr 1fr;
                     gap: 20px;
                     margin: 20px 0;
-                }
+                }}
 
-                .growth-period {
+                .growth-period {{
                     background: #f8f9fa;
                     padding: 20px;
                     border-radius: 6px;
-                }
+                }}
 
-                .growth-rate {
+                .growth-rate {{
                     font-size: 18px;
                     font-weight: 600;
-                    color: #27ae60;
+                    color: {styles['success_color']};
                     text-align: center;
                     margin: 20px 0;
-                }
+                }}
 
-                .yearly-data {
+                .yearly-data {{
                     display: grid;
                     grid-template-columns: 1fr 1fr;
                     gap: 20px;
                     margin: 20px 0;
-                }
+                }}
 
-                .year-item {
+                .year-item {{
                     background: #f8f9fa;
                     padding: 20px;
                     border-radius: 6px;
-                }
+                }}
 
-                ul, ol {
+                ul, ol {{
                     margin-left: 30px;
                     margin-bottom: 20px;
-                }
+                }}
 
-                li {
+                li {{
                     margin-bottom: 8px;
-                    color: #555;
-                }
+                    color: {styles['text_color']};
+                }}
 
-                .footer {
+                .footer {{
                     text-align: center;
                     padding-top: 20px;
-                    border-top: 1px solid #ecf0f1;
+                    border-top: 1px solid {styles['border_color']};
                     color: #666;
                     font-size: 12px;
-                }
+                }}
 
-                @media print {
-                    body {
+                @media print {{
+                    body {{
                         background: white;
                         padding: 0;
-                    }
+                    }}
 
-                    .container {
+                    .container {{
                         box-shadow: none;
                         padding: 20px;
-                    }
-                }
+                    }}
+                }}
             </style>
         </head>
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>{{ title }}</h1>
+                    <h1>{{{{ title }}}}</h1>
                     <div class="meta">
-                        <p>{{ company_name }} | 버전 {{ version }}</p>
-                        <p>{{ generated_at }}</p>
+                        <p>{{{{ company_name }}}} | 버전 {{{{ version }}}}</p>
+                        <p>{{{{ generated_at }}}}</p>
                     </div>
                 </div>
         """
