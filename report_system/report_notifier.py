@@ -5,12 +5,15 @@
 """
 
 import os
+import smtplib
 import logging
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
+from email.mime.base import MIMEBase
+from email import encoders
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +29,7 @@ class ReportNotifier:
             config: 알림 설정
         """
         self.config = config or self._get_default_config()
+        self.smtp_config = self._get_smtp_config()
         self.email_notifier = None
         self._initialize_email_notifier()
 
@@ -34,29 +38,114 @@ class ReportNotifier:
         from .config import EmailNotificationConfig
         return EmailNotificationConfig()
 
+    def _get_smtp_config(self) -> Dict[str, Any]:
+        """SMTP 설정 가져오기"""
+        return {
+            'host': os.getenv('SMTP_HOST', 'smtp.gmail.com'),
+            'port': int(os.getenv('SMTP_PORT', '587')),
+            'use_tls': os.getenv('SMTP_USE_TLS', 'true').lower() == 'true',
+            'email': os.getenv('EMAIL_ADDRESS', ''),
+            'password': os.getenv('EMAIL_PASSWORD', ''),
+            'from_name': os.getenv('EMAIL_FROM_NAME', 'DealBot Report System')
+        }
+
     def _initialize_email_notifier(self):
         """이메일 알림기 초기화"""
         if not self.config.enabled:
             logger.info("이메일 알림이 비활성화되어 있습니다.")
             return
 
+        # 이메일 설정 확인
+        if not self.smtp_config['email'] or not self.smtp_config['password']:
+            logger.warning("이메일 계정 정보가 설정되지 않았습니다.")
+            logger.warning("환경 변수 설정: EMAIL_ADDRESS, EMAIL_PASSWORD")
+            return
+
+        logger.info("이메일 알림기 초기화 완료")
+
+    def send_email(
+        self,
+        recipients: List[str],
+        subject: str,
+        body: str,
+        attachments: Optional[List[str]] = None
+    ) -> bool:
+        """
+        이메일 전송
+
+        Args:
+            recipients: 수신자 목록
+            subject: 이메일 제목
+            body: 이메일 본문 (HTML)
+            attachments: 첨부 파일 경로 목록
+
+        Returns:
+            전송 성공 여부
+        """
+        if not self.smtp_config['email'] or not self.smtp_config['password']:
+            logger.error("SMTP 설정이 되지 않았습니다.")
+            return False
+
         try:
-            from email_notifier import EmailNotifier, EmailAuth
+            # 이메일 메시지 생성
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = subject
+            msg['From'] = f"{self.smtp_config['from_name']} <{self.smtp_config['email']}>"
+            msg['To'] = ', '.join(recipients)
 
-            # 이메일 인증 설정 (환경 변수 또는 설정 파일에서 가져오기)
-            email = os.getenv('EMAIL_ADDRESS', '')
-            password = os.getenv('EMAIL_PASSWORD', '')
+            # HTML 본문 추가
+            html_part = MIMEText(body, 'html', 'utf-8')
+            msg.attach(html_part)
 
-            if not email or not password:
-                logger.warning("이메일 계정 정보가 설정되지 않았습니다.")
-                return
+            # 첨부 파일 추가
+            if attachments:
+                for file_path in attachments:
+                    if os.path.exists(file_path):
+                        with open(file_path, 'rb') as f:
+                            file_data = f.read()
 
-            auth = EmailAuth(email, password)
-            self.email_notifier = EmailNotifier(auth)
-            logger.info("이메일 알림기 초기화 완료")
+                        file_name = os.path.basename(file_path)
+
+                        # 파일 타입 결정
+                        if file_name.endswith('.pdf'):
+                            mime_type = 'application'
+                            subtype = 'pdf'
+                        elif file_name.endswith('.png'):
+                            mime_type = 'image'
+                            subtype = 'png'
+                        elif file_name.endswith('.jpg') or file_name.endswith('.jpeg'):
+                            mime_type = 'image'
+                            subtype = 'jpeg'
+                        else:
+                            mime_type = 'application'
+                            subtype = 'octet-stream'
+
+                        part = MIMEBase(mime_type, subtype)
+                        part.set_payload(file_data)
+                        encoders.encode_base64(part)
+                        part.add_header(
+                            'Content-Disposition',
+                            f'attachment; filename="{file_name}"'
+                        )
+                        msg.attach(part)
+                        logger.info(f"첨부 파일 추가: {file_name}")
+                    else:
+                        logger.warning(f"첨부 파일을 찾을 수 없습니다: {file_path}")
+
+            # SMTP 서버 연결 및 전송
+            with smtplib.SMTP(self.smtp_config['host'], self.smtp_config['port']) as server:
+                if self.smtp_config['use_tls']:
+                    server.starttls()
+
+                server.login(self.smtp_config['email'], self.smtp_config['password'])
+                server.send_message(msg)
+
+            logger.info(f"이메일 전송 완료: {subject} -> {recipients}")
+            return True
 
         except Exception as e:
-            logger.error(f"이메일 알림기 초기화 실패: {e}")
+            logger.error(f"이메일 전송 실패: {e}")
+            return False
 
     def send_report_notification(
         self,
@@ -75,8 +164,8 @@ class ReportNotifier:
         Returns:
             전송 성공 여부
         """
-        if not self.config.enabled or not self.email_notifier:
-            logger.warning("이메일 알림이 비활성화되어 있거나 초기화되지 않았습니다.")
+        if not self.config.enabled:
+            logger.warning("이메일 알림이 비활성화되어 있습니다.")
             return False
 
         try:
@@ -105,7 +194,7 @@ class ReportNotifier:
                     logger.warning(f"PDF 파일을 찾을 수 없습니다: {pdf_path}")
 
             # 이메일 전송
-            success = self.email_notifier.send_email(
+            success = self.send_email(
                 recipients=final_recipients,
                 subject=subject,
                 body=body,
@@ -171,22 +260,19 @@ class ReportNotifier:
                             attachments.append(pdf_path)
 
             # 이메일 전송
-            if self.email_notifier:
-                success = self.email_notifier.send_email(
-                    recipients=final_recipients,
-                    subject=subject,
-                    body=body,
-                    attachments=attachments
-                )
+            success = self.send_email(
+                recipients=final_recipients,
+                subject=subject,
+                body=body,
+                attachments=attachments
+            )
 
-                if success:
-                    logger.info(f"리포트 일괄 알림 전송 완료: {len(report_results)}개 리포트")
-                    return True
-                else:
-                    logger.error("리포트 일괄 알림 전송 실패")
-                    return False
-
-            return False
+            if success:
+                logger.info(f"리포트 일괄 알림 전송 완료: {len(report_results)}개 리포트")
+                return True
+            else:
+                logger.error("리포트 일괄 알림 전송 실패")
+                return False
 
         except Exception as e:
             logger.error(f"리포트 일괄 알림 전송 중 예외 발생: {e}")
@@ -209,7 +295,7 @@ class ReportNotifier:
         Returns:
             전송 성공 여부
         """
-        if not self.config.enabled or not self.email_notifier:
+        if not self.config.enabled:
             return False
 
         try:
@@ -230,7 +316,7 @@ class ReportNotifier:
             """
 
             # 이메일 전송
-            success = self.email_notifier.send_email(
+            success = self.send_email(
                 recipients=final_recipients,
                 subject=subject,
                 body=body
@@ -406,10 +492,6 @@ class ReportNotifier:
         Returns:
             전송 성공 여부
         """
-        if not self.email_notifier:
-            logger.error("이메일 알림기가 초기화되지 않았습니다.")
-            return False
-
         try:
             final_recipient = recipient or (self.config.recipients[0] if self.config.recipients else None)
             if not final_recipient:
@@ -424,7 +506,7 @@ class ReportNotifier:
             <p>이 이메일을 받으셨다면 시스템이 정상적으로 구성된 것입니다.</p>
             """
 
-            success = self.email_notifier.send_email(
+            success = self.send_email(
                 recipients=[final_recipient],
                 subject=subject,
                 body=body
