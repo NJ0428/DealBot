@@ -1,0 +1,65 @@
+{
+  "general": {
+    "backup_dir": "backups",
+    "compress": true,
+    "max_backups": 30,
+    "enable_wal": true,
+    "auto_backup_enabled": true,
+    "notification_enabled": false
+  },
+  "retention": {
+    "daily_backups_keep_days": 7,
+    "weekly_backups_keep_weeks": 4,
+    "monthly_backups_keep_months": 12,
+    "min_full_backups": 3
+  },
+  "schedules": {
+    "full_backup_daily": {
+      "enabled": true,
+      "type": "full",
+      "interval": "daily",
+      "time": "02:00",
+      "description": "일일 전체 백업",
+      "tags": ["daily", "full"],
+      "max_retries": 3,
+      "retry_interval_minutes": 5
+    },
+    "incremental_backup_hourly": {
+      "enabled": true,
+      "type": "incremental",
+      "interval": "hourly",
+      "description": "시간별 증분 백업",
+      "tags": ["hourly", "incremental"],
+      "max_retries": 3,
+      "retry_interval_minutes": 5
+    },
+    "weekly_backup": {
+      "enabled": true,
+      "type": "full",
+      "interval": "weekly",
+      "time": "03:00",
+      "description": "주간 전체 백업",
+      "tags": ["weekly", "full"],
+      "max_retries": 3,
+      "retry_interval_minutes": 10
+    }
+  },
+  "recovery": {
+    "create_safety_backup": true,
+    "verify_after_restore": true,
+    "max_recovery_points": 100
+  },
+  "notification": {
+    "on_backup_success": false,
+    "on_backup_failure": true,
+    "on_recovery_complete": true,
+    "email_recipients": []
+  },
+  "logging": {
+    "level": "INFO",
+    "log_file": "backups/backup.log",
+    "log_rotation": true,
+    "max_log_size_mb": 10,
+    "backup_log_count": 5
+  }
+}
