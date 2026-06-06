@@ -1,0 +1,56 @@
+{
+  "full_daily_20260603_001155": {
+    "schedule_id": "full_daily_20260603_001155",
+    "schedule_type": "full",
+    "database_path": "sample.db",
+    "interval": "daily",
+    "time": "01:00",
+    "enabled": true,
+    "max_retries": 3,
+    "retry_interval_minutes": 5,
+    "tags": [
+      "nightly",
+      "full"
+    ],
+    "description": "심야 전체 백업",
+    "last_run": null,
+    "next_run": null,
+    "last_status": null
+  },
+  "incremental_hourly_20260603_001155": {
+    "schedule_id": "incremental_hourly_20260603_001155",
+    "schedule_type": "incremental",
+    "database_path": "sample.db",
+    "interval": "hourly",
+    "time": null,
+    "enabled": true,
+    "max_retries": 3,
+    "retry_interval_minutes": 5,
+    "tags": [
+      "hourly",
+      "incremental"
+    ],
+    "description": "시간별 증분 백업",
+    "last_run": null,
+    "next_run": null,
+    "last_status": null
+  },
+  "full_weekly_20260603_001155": {
+    "schedule_id": "full_weekly_20260603_001155",
+    "schedule_type": "full",
+    "database_path": "sample.db",
+    "interval": "weekly",
+    "time": "03:00",
+    "enabled": true,
+    "max_retries": 3,
+    "retry_interval_minutes": 5,
+    "tags": [
+      "weekly",
+      "full"
+    ],
+    "description": "주간 전체 백업",
+    "last_run": null,
+    "next_run": null,
+    "last_status": null
+  }
+}
