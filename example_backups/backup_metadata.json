@@ -1,0 +1,18 @@
+{
+  "full_20260603_001154_260956": {
+    "backup_id": "full_20260603_001154_260956",
+    "backup_type": "full",
+    "timestamp": "2026-06-03T00:11:54.270762",
+    "database_path": "D:\\claude\\DealBot\\sample.db",
+    "backup_path": "example_backups\\full_20260603_001154_260956.db.gz",
+    "size_bytes": 20480,
+    "compressed_size": 631,
+    "checksum": "37ce485ac13057ea33c47932b402fb2db4efff83f6656ee7e60abaa8a04cbe01",
+    "wal_checkpoint": "0_0_0",
+    "description": "초기 전체 백업",
+    "tags": [
+      "initial",
+      "full"
+    ]
+  }
+}
