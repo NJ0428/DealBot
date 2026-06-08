@@ -1,0 +1,67 @@
+{
+  "backup_dir": "backups",
+  "compression": {
+    "enabled": true
+  },
+  "retention": {
+    "max_backups": 30,
+    "daily_backups_keep_days": 7,
+    "weekly_backups_keep_weeks": 4
+  },
+  "cloud_storage": {
+    "enabled": false,
+    "auto_upload": true,
+    "auto_cleanup": false,
+    "providers": []
+  },
+  "notifications": {
+    "enabled": false,
+    "on_backup_success": true,
+    "on_backup_failed": true,
+    "on_backup_started": false,
+    "on_restore_success": true,
+    "on_restore_failed": true,
+    "on_storage_full": true,
+    "weekly_report": false
+  },
+  "aws_s3": {
+    "enabled": false,
+    "access_key": "",
+    "secret_key": "",
+    "bucket_name": "",
+    "region": "ap-northeast-2",
+    "storage_class": "STANDARD",
+    "encryption": "AES256",
+    "endpoint_url": null
+  },
+  "google_cloud": {
+    "enabled": false,
+    "credentials_path": "",
+    "bucket_name": "",
+    "project_id": "",
+    "storage_class": "STANDARD",
+    "encryption_key": null
+  },
+  "email": {
+    "enabled": false,
+    "smtp_server": "smtp.gmail.com",
+    "smtp_port": 587,
+    "username": "",
+    "password": "",
+    "from_email": "",
+    "use_tls": true
+  },
+  "slack": {
+    "enabled": false,
+    "webhook_url": "",
+    "channel": null,
+    "username": "Backup Bot",
+    "icon_emoji": ":floppy_disk:"
+  },
+  "webhook": {
+    "enabled": false,
+    "url": "",
+    "headers": {}
+  },
+  "default_recipients": []
+}
