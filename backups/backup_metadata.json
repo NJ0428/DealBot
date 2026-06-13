@@ -1,0 +1,18 @@
+{
+  "full_20260608_235858_831928": {
+    "backup_id": "full_20260608_235858_831928",
+    "backup_type": "full",
+    "timestamp": "2026-06-08T23:58:58.850048",
+    "database_path": "D:\\claude\\DealBot\\integration_sample.db",
+    "backup_path": "backups\\full_20260608_235858_831928.db.gz",
+    "size_bytes": 20480,
+    "compressed_size": 628,
+    "checksum": "8a13c8b4db28366a19d680b20350be05067c607ed2ca3dc21814590f2089cc57",
+    "wal_checkpoint": "0_0_0",
+    "description": "통합 테스트 전체 백업",
+    "tags": [
+      "integration",
+      "test"
+    ]
+  }
+}
