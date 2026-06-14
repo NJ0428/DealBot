@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 웹 주제 크롤러 및 Excel 저장 프로그램 (업그레이드 버전)
 특정 주제/키워드로 웹에서 정보를 수집하고 Excel 파일로 저장합니다.
