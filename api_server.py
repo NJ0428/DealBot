@@ -1181,32 +1181,32 @@ def internal_error(error):
 def main():
     """메인 실행 함수"""
     print("=" * 60)
-    print("🔌 DealBot REST API 서버 시작")
+    print("DealBot REST API Server Starting")
     print("=" * 60)
 
     # 기본 API 키 생성
     default_key = create_default_api_key()
     if default_key:
-        print("\n🔑 기본 API 키가 생성되었습니다:")
+        print("\n[API Key] Default API key created:")
         print(f"   Key ID: {default_key.key_id}")
         print(f"   Key Secret: {default_key.key_secret}")
         print(f"   Name: {default_key.name}")
         print(f"   Rate Limit: {default_key.rate_limit}")
         print(f"   Permissions: {default_key.permissions}")
-        print("\n⚠️  이 정보는 안전하게 보관하세요!")
+        print("\n[WARNING] Keep this information safe!")
 
     # 서버 정보 출력
-    print("\n📡 API 서버 정보:")
+    print("\n[Server Info] API Server Information:")
     print(f"   주소: http://localhost:5000")
     print(f"   헬스체크: http://localhost:5000/api/v1/health")
     print(f"   API 문서: http://localhost:5000/api/v1/docs")
 
-    print("\n🔑 인증 방법:")
+    print("\n[Authentication] Authentication Method:")
     print("   Headers:")
     print("     X-API-Key-ID: your_key_id")
     print("     X-API-Key-Secret: your_key_secret")
 
-    print("\n⌨️  종료하려면 Ctrl+C를 누르세요")
+    print("\n[Info] Press Ctrl+C to stop the server")
     print("=" * 60 + "\n")
 
     # Flask 서버 시작
