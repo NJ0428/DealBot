@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 웹 주제 크롤러 및 Excel 저장 프로그램 (업그레이드 버전)
@@ -1120,16 +1120,6 @@ class WebCrawler:
             use_cache: 캐시 사용 여부
             filter_criteria: 필터링 기준
             progress_callback: 진행률 콜백 함수 (completed, total, current_url) -> bool
-
-        Returns:
-            크롤링된 데이터 리스트
-        """
-
-        Args:
-            keyword: 검색 키워드
-            max_results: 최대 결과 수
-            use_cache: 캐시 사용 여부 (None인 경우 초기 설정 사용)
-            filter_criteria: 필터링 기준
 
         Returns:
             크롤링된 데이터 리스트
