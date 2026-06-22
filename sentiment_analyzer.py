@@ -28,7 +28,17 @@ try:
 except ImportError:
     NUMPY_AVAILABLE = False
 
-from web_crawler import setup_logging
+# 순환 import 방지를 위해 직접 logging 설정
+def setup_logging():
+    """기본 logging 설정"""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler()
+        ]
+    )
+    return logging.getLogger(__name__)
 
 logger = setup_logging()
 
